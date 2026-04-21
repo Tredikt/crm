@@ -12,13 +12,21 @@
 
 1. `cp .env.example .env` — задайте `POSTGRES_*`, `TELEGRAM_*`, `CORS_ORIGINS` (и при необходимости `PUBLIC_API_BASE_URL`).
 
-2. `docker compose up --build -d` — поднимаются Postgres, миграции, **api** и **bot**.
+2. `docker compose up --build -d` — поднимаются Postgres, миграции, **api** и **bot** (Vite **не** стартует: это только бэкенд в контейнерах).
 
 3. **API** доступен на хосте только с **loopback**: `http://127.0.0.1:8000` (см. `ports` в `docker-compose.yml`). С интернета напрямую порт **не** слушает.
 
-4. **Фронтенд** в Docker не собирается: статику выкатываете на сервер сами (ниже).
+4. **UI в разработке (порт 5173):** либо `docker compose --profile dev up` — поднимается Vite в контейнере и `http://127.0.0.1:5173`, прокси `/api` → контейнер `api`; либо на **хосте** `cd frontend && npm ci && npm run dev` (тот же 5173, прокси на `127.0.0.1:8000`).
+
+5. **Продакшен:** фронт не в Docker — соберите `npm run build` и отдайте `dist` через nginx на сервере (см. ниже).
 
 ### Полезные команды
+
+Бэкенд + Vite на 5173 (профиль `dev`):
+
+```bash
+docker compose --profile dev up --build
+```
 
 ```bash
 docker compose logs -f api

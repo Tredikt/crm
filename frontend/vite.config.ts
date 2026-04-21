@@ -15,9 +15,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        // Host dev: 127.0.0.1. Docker: set API_PROXY_TARGET=http://api:8000
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000",
         changeOrigin: true,
       },
     },
