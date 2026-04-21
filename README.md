@@ -8,49 +8,60 @@
 - Сборка UI: Node.js 20+
 - Локальная разработка без Docker: Python 3.11+
 
-## Бэкенд (Docker)
+## Продакшен (сервер)
 
-1. `cp .env.example .env` — задайте `POSTGRES_*`, `TELEGRAM_*`, `CORS_ORIGINS` (и при необходимости `PUBLIC_API_BASE_URL`).
+**Стек в Docker** по умолчанию: Postgres, миграции, **API**, **бот**, **web** (собранный SPA + nginx). Сервис **`frontend`** (Vite) только с профилем `dev` — сюда **не** входит.
 
-2. `docker compose up --build -d` — поднимаются Postgres, миграции, **api** и **bot** (Vite **не** стартует: это только бэкенд в контейнерах).
+**Про «SSR»:** в приложении нет **серверного** рендера React (как в Next.js): это **SPA** — `npm run build` отдаёт статику, в браузере по-прежнему гидратация. Полноценный SSR = отдельная миграция (Next/Remix/Vite SSR). Сейчас — **всё в одном `compose`**, UI в контейнере `web` без Node в рантайме (только nginx + файлы).
 
-3. **API** доступен на хосте только с **loopback**: `http://127.0.0.1:8000` (см. `ports` в `docker-compose.yml`). С интернета напрямую порт **не** слушает.
+### 1. Всё в Docker, включая UI
 
-4. **UI в разработке (порт 5173):** либо `docker compose --profile dev up` — поднимается Vite в контейнере и `http://127.0.0.1:5173`, прокси `/api` → контейнер `api`; либо на **хосте** `cd frontend && npm ci && npm run dev` (тот же 5173, прокси на `127.0.0.1:8000`).
+1. `cp .env.example .env` — **сильный** `POSTGRES_PASSWORD`, `TELEGRAM_*`, `CORS_ORIGINS` (домен(ы) с UI и, при `WEB_PORT` по умолчанию, `http://localhost:8080` / `http://127.0.0.1:8080` — из `.env.example`), при необходимости `PUBLIC_API_BASE_URL`.
 
-5. **Продакшен:** фронт не в Docker — соберите `npm run build` и отдайте `dist` через nginx на сервере (см. ниже).
+2. Сборка и запуск (образ `web` соберёт `frontend` в multi-stage, ручной `npm run build` на хосте **не** нужен):
 
-### Полезные команды
+   ```bash
+   docker compose up -d --build
+   ```
 
-Бэкенд + Vite на 5173 (профиль `dev`):
+   Поднимаются: `postgres` → `migrate` → `api`, `bot`, **`web`**. Состояние БД: volume `pgdata`.
+
+3. **Веб-интерфейс** — контейнер `web`: `http://127.0.0.1:8080` (порт задайте в `.env`: `WEB_PORT=8080` или, например, `WEB_PORT=80` на Linux при необходимости). Прокси **внутри** Docker: `location /api/` → `http://api:8000` (см. `frontend/nginx.default.conf`).
+
+4. **API с хоста** (для отладки/health), только loopback: `http://127.0.0.1:8000` — порт **не** слушает снаружи.
+
+### 2. Вариант без UI в Docker: статика + nginx на хосте
+
+Если нужен **только** системный nginx (или certbot сразу на хосте) и **без** сервиса `web`:
+
+```bash
+docker compose up -d --build postgres migrate api bot
+```
+
+Дальше вручную: `cd frontend && npm ci && npm run build`, копия `dist` (например в `/var/www/lidocrm/`), конфиг по **`deploy/server-nginx.example.conf`**, `location /api/` → `http://127.0.0.1:8000`, HTTPS — `certbot` и т.д. (см. «DNS и HTTPS» ниже).
+
+### Логи и БД (prod)
+
+```bash
+docker compose logs -f api
+docker compose logs -f web
+docker compose logs -f bot
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+```
+
+Остановка: `docker compose down` (volume `pgdata` с данными PostgreSQL остаётся, пока не удалите `docker volume rm`).
+
+## Разработка: Docker + Vite
+
+**Бэк + Vite (5173) в Docker** — включите профиль `dev` (тогда поднимается `frontend` с прокси `/api` → `api:8000`):
 
 ```bash
 docker compose --profile dev up --build
 ```
 
-```bash
-docker compose logs -f api
-docker compose logs -f bot
-docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-```
+UI: `http://127.0.0.1:5173`. **Только** Vite **на хосте**: `cd frontend && npm ci && npm run dev` (прокси на `127.0.0.1:8000`).
 
-Остановка: `docker compose down` (данные БД в volume `pgdata` сохраняются).
-
-## Продакшен: UI и nginx на сервере
-
-1. **Соберите** SPA (в репо `VITE_API_BASE` по умолчанию не нужен в `.env` — в `frontend` заложен префикс `/api/v1`):
-
-   ```bash
-   cd frontend && npm ci && npm run build
-   ```
-
-2. Скопируйте содержимое `frontend/dist` в каталог, с которого **системный nginx** отдаёт файлы, например `/var/www/lidocrm/`.
-
-3. Подключите **nginx** на хосте: копия примера — **`deploy/server-nginx.example.conf`**. Прямой `location /api/` → `http://127.0.0.1:8000` (тот же порт, что публикует контейнер `api`).
-
-4. В **`.env`** на сервере укажите `CORS_ORIGINS=https://ваш-домен` и при необходимости `PUBLIC_API_BASE_URL=https://ваш-домен`.
-
-5. **DNS** A/AAAA на IP сервера, затем **HTTPS** (например `sudo certbot --nginx -d ваш-домен` после настройки `server` на :80). Подробности — в разделе ниже.
+**Бэк на хосте, без Docker** — см. раздел «Локальная разработка (без Docker)» ниже.
 
 ## DNS и HTTPS (кратко)
 
