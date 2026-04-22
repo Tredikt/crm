@@ -34,7 +34,9 @@ services:
   api:
     build: .
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      --no-access-log
     ports:
       - "127.0.0.1:8000:8000"
     # DATABASE_URL с хоста `localhost` в .env — для контейнера неверен: после <<: идут явные ключи
