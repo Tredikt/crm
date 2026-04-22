@@ -14,6 +14,10 @@ from app.services.calendar_export_service import (
     validate_token,
 )
 
+# Публично: Google Calendar и др. открывают по секретному token в query (без JWT).
+public_router = APIRouter(prefix="/calendar-export", tags=["calendar-export"])
+
+# Статус и смена токена — только с JWT (подключается к protected в api/v1/__init__.py).
 router = APIRouter(prefix="/calendar-export", tags=["calendar-export"])
 
 
@@ -62,7 +66,7 @@ async def export_regenerate(
     )
 
 
-@router.get("/feed.ics")
+@public_router.get("/feed.ics")
 async def export_feed_ics(
     db: Annotated[AsyncSession, Depends(get_db)],
     token: str | None = Query(None),

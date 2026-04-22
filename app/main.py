@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
         title="LidoCRM API",
         version="0.1.0",
         lifespan=lifespan,
-        debug=settings.debug,
+        debug=settings.debug or settings.dev,
     )
     application.add_middleware(
         CORSMiddleware,
@@ -31,6 +31,9 @@ def create_app() -> FastAPI:
 
     @application.get("/health")
     async def health():
+        s = get_settings()
+        if s.dev:
+            return {"status": "ok", "dev": True}
         return {"status": "ok"}
 
     return application

@@ -3,12 +3,15 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListTodo,
+  LogOut,
   Settings,
   UserCircle,
   UserPlus,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 
+import type { UserMe } from "@/shared/api/auth";
+import { clearAccessToken } from "@/shared/lib/auth-storage";
 import { cn } from "@/shared/lib/cn";
 
 const nav = [
@@ -20,14 +23,26 @@ const nav = [
   { to: "/settings", label: "Настройки", icon: Settings },
 ];
 
-export function Sidebar() {
+type Props = { user: UserMe };
+
+export function Sidebar({ user }: Props) {
+  const navigate = useNavigate();
+
+  function logout() {
+    clearAccessToken();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <aside className="flex w-52 shrink-0 flex-col border-r border-line bg-surface-card">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <UserCircle className="h-5 w-5 text-ink-muted" />
         <span className="text-sm font-semibold tracking-tight">LidoCRM</span>
       </div>
-      <nav className="flex flex-col gap-0.5 p-2">
+      <p className="border-b border-line px-3 py-2 text-xs text-ink-muted break-all" title={user.email}>
+        {user.email}
+      </p>
+      <nav className="flex flex-1 flex-col gap-0.5 p-2">
         {nav.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -47,6 +62,16 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="border-t border-line p-2">
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Выйти
+        </button>
+      </div>
     </aside>
   );
 }

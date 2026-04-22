@@ -6,6 +6,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-lidocrm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lidocrm}
       POSTGRES_DB: ${POSTGRES_DB:-lidocrm}
+    # Раскомментируйте, если с хоста нужен psql/alembic к этому инстансу (тогда .env: localhost:5432)
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -34,8 +37,11 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "127.0.0.1:8000:8000"
+    # DATABASE_URL с хоста `localhost` в .env — для контейнера неверен: после <<: идут явные ключи
     environment:
       <<: *app_db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lidocrm}:${POSTGRES_PASSWORD:-lidocrm}@postgres:5432/${POSTGRES_DB:-lidocrm}
+      DEV: ${DEV:-false}
     env_file:
       - .env
     depends_on:
@@ -47,6 +53,8 @@ services:
     command: python -m app.bot.main
     environment:
       <<: *app_db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lidocrm}:${POSTGRES_PASSWORD:-lidocrm}@postgres:5432/${POSTGRES_DB:-lidocrm}
+      DEV: ${DEV:-false}
     env_file:
       - .env
     depends_on:

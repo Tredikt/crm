@@ -2,11 +2,41 @@
 
 Персональная CRM: лиды, воронка, задачи, проекты, экспорт календаря (iCal), Telegram-бот.
 
+**Авторизация:** веб-интерфейс защищён входом (email, пароль, JWT). Сначала зарегистрируйтесь, затем при желании отключите новые регистрации: `AUTH_ALLOW_REGISTRATION=false` в `.env`. Смените `AUTH_JWT_SECRET` в проде. **Данные CRM не разделены по пользователям** — все вошедшие видят одну и ту же воронку (мультитенантность в моделях нет, только «закрыли дверь с улицы»).
+
 ## Требования
 
 - [Docker](https://docs.docker.com/get-docker/) и Docker Compose v2
 - Сборка UI: Node.js 20+
 - Локальная разработка без Docker: Python 3.11+
+
+## Пересоздать БД (Docker) на локалке
+
+Данные PostgreSQL в volume **`pgdata`**. Сброс кластера:
+
+```bash
+docker compose down
+docker compose up -d --build
+# с удалением тома (все данные БД):
+docker compose down -v
+docker compose up -d --build
+```
+
+Проект в Compose получает префикс к имени тома (см. `docker volume ls`). Потребуются те же `POSTGRES_*` в `.env`, что и раньше (или сменить пароль и пересобрать).
+
+**Сбой `asyncpg` / connection** в контейнере `api` часто из‑за `DATABASE_URL=...@localhost:5432` в `.env`: внутри контейнера `localhost` — не Postgres. В `docker-compose` для `api`/`bot` URL к БД зафиксирован на хост **`postgres`**. Для доступа с **хоста** к той же БД раскомментируйте `ports: "127.0.0.1:5432:5432"` у сервиса `postgres` и в `.env` на хосте укажите `127.0.0.1:5432` в `DATABASE_URL`.
+
+**Проверка режима:** `DEV=true` в `.env` — подробные ответы, SQL в лог (echo), `GET /health` отдаёт `{"status": "ok", "dev": true}`. В проде задайте `DEV=false` или уберите переменную.
+
+## Тесты (API, локально)
+
+Нужен Python с dev-зависимостями: `pip install -e ".[dev]"`. По умолчанию в `tests/._test.sqlite` поднимается **SQLite** (отдельно от prod Postgres).
+
+```bash
+python -m pytest tests/ -v
+```
+
+Свой URL БД: `set TEST_DATABASE_URL=postgresql+asyncpg://...` (PowerShell) и заранее `alembic upgrade head` на этой БД. Для iCal в тестах по-прежнему вызывается `GET /calendar-export/feed.ics?token=...` — без JWT, как в проде.
 
 ## Продакшен (сервер)
 
@@ -106,6 +136,10 @@ sudo certbot certonly --manual --preferred-challenges dns -d crm.example.com
 | `PUBLIC_API_BASE_URL` | Публичный URL для iCal / внешних ссылок |
 | `TELEGRAM_*` | Бот |
 | `APP_TIMEZONE` | Таймзона для «сегодня» и напоминаний |
+| `AUTH_JWT_SECRET` | Секрет подписи JWT, ≥32 символа (в проде обязательно сменить) |
+| `AUTH_JWT_EXPIRE_MINUTES` | Срок жизни токена (по умолчанию 7 суток) |
+| `AUTH_ALLOW_REGISTRATION` | Разрешить `POST /auth/register` (после создания админа можно `false`) |
+| `DEV` | Режим разработки: debug API, echo SQL, в `/health` — `"dev": true` |
 
 ## Лицензия
 

@@ -1,3 +1,9 @@
+import {
+  clearAccessToken,
+  getAccessToken,
+  isAuthPath,
+} from "@/shared/lib/auth-storage";
+
 /** Префикс API (в dev обычно /api/v1 через proxy Vite). */
 export const API_V1_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 
@@ -24,12 +30,21 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
 }
 
+function withAuth(h: Headers): Headers {
+  const next = new Headers(h);
+  const t = getAccessToken();
+  if (t) {
+    next.set("Authorization", `Bearer ${t}`);
+  }
+  return next;
+}
+
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit & { json?: unknown },
 ): Promise<T> {
   const { json, headers, ...rest } = init ?? {};
-  const h = new Headers(headers);
+  const h = withAuth(new Headers(headers));
   if (json !== undefined) {
     h.set("Content-Type", "application/json");
   }
@@ -38,6 +53,22 @@ export async function apiRequest<T>(
     headers: h,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
+  if (res.status === 401) {
+    const anonAuth = path === "/auth/login" || path === "/auth/register";
+    if (!anonAuth) {
+      clearAccessToken();
+      const p = window.location.pathname;
+      if (!isAuthPath(p)) {
+        window.location.assign("/login");
+      }
+    }
+    const body = await parseJson<{ detail?: string }>(res);
+    const msg =
+      typeof body?.detail === "string"
+        ? body.detail
+        : `HTTP ${res.status} ${res.statusText}`;
+    throw new ApiError(msg, res.status, body);
+  }
   if (!res.ok) {
     const body = await parseJson<{ detail?: string }>(res);
     const msg =

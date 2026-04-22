@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = False
 
+    #: Режим разработки/проверки: вместе с DEBUG даёт детальные ответы, SQL в лог, dev в /health
+    dev: bool = False
+
     telegram_bot_token: str = ""
     telegram_allowed_user_ids: str = ""
 
@@ -33,6 +36,14 @@ class Settings(BaseSettings):
 
     #: Публичный URL API для ссылки экспорта iCal (для Google Calendar). Пример: https://crm.example.com
     public_api_base_url: str = ""
+
+    #: Секрет для JWT (в проде задайте длинную случайную строку ≥32 символов)
+    auth_jwt_secret: str = Field(
+        default="dev-insecure-lidocrm-jwt-secret-replace-in-production-32b",
+        min_length=32,
+    )
+    auth_jwt_expire_minutes: int = 60 * 24 * 7  # 7 суток
+    auth_allow_registration: bool = True
 
     @property
     def cors_origins_list(self) -> list[str]:
