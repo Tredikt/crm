@@ -2,6 +2,7 @@ import type { Tag } from "@/entities/tag/types";
 
 export type LeadStatus =
   | "new"
+  | "in_work"
   | "first_contact"
   | "need_identified"
   | "offer_sent"

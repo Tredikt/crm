@@ -20,7 +20,8 @@ class LeadFunnelCompleteError(Exception):
 
 
 FUNNEL_NEXT: dict[LeadStatus, LeadStatus | None] = {
-    LeadStatus.new: LeadStatus.first_contact,
+    LeadStatus.new: LeadStatus.in_work,
+    LeadStatus.in_work: LeadStatus.first_contact,
     LeadStatus.first_contact: LeadStatus.need_identified,
     LeadStatus.need_identified: LeadStatus.offer_sent,
     LeadStatus.offer_sent: LeadStatus.thinking,

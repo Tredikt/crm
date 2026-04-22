@@ -6,12 +6,13 @@ import { ProjectPriorityBadge } from "@/entities/project/ui/ProjectPriorityBadge
 import { ProjectStatusBadge } from "@/entities/project/ui/ProjectStatusBadge";
 import { ProjectQuickActions } from "@/features/project-update-status/ui/ProjectQuickActions";
 import { formatTaskPriority, formatTaskStatus } from "@/entities/task/labels";
-import type { Task } from "@/entities/task/types";
+import type { Task, TaskPriority } from "@/entities/task/types";
 import { formatDateOnly, formatDateTime } from "@/shared/lib/dates";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 
 export function ProjectDetailSections({
@@ -21,15 +22,18 @@ export function ProjectDetailSections({
   newTaskTitle,
   newTaskDescription,
   newTaskDue,
+  newTaskPriority,
   onNewTaskTitle,
   onNewTaskDescription,
   onNewTaskDue,
+  onNewTaskPriority,
   onCreateTask,
   creatingTask,
   onCompleteTask,
   onEditTask,
   onDeleteTask,
   completingId,
+  onEditProject,
 }: {
   project: Project;
   lead: Lead | undefined;
@@ -37,15 +41,18 @@ export function ProjectDetailSections({
   newTaskTitle: string;
   newTaskDescription: string;
   newTaskDue: string;
+  newTaskPriority: TaskPriority;
   onNewTaskTitle: (v: string) => void;
   onNewTaskDescription: (v: string) => void;
   onNewTaskDue: (v: string) => void;
+  onNewTaskPriority: (v: TaskPriority) => void;
   onCreateTask: () => void;
   creatingTask: boolean;
   onCompleteTask: (id: number) => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
   completingId: number | null;
+  onEditProject: () => void;
 }) {
   return (
     <div className="space-y-6">
@@ -74,8 +81,11 @@ export function ProjectDetailSections({
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle>Обзор</CardTitle>
+          <Button size="sm" variant="secondary" onClick={onEditProject}>
+            Редактировать
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           {project.description ? (
@@ -160,7 +170,7 @@ export function ProjectDetailSections({
                 placeholder="Детали…"
               />
             </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
               <label className="block text-xs font-medium text-ink-muted sm:w-52">
                 Срок
                 <Input
@@ -170,6 +180,19 @@ export function ProjectDetailSections({
                   onChange={(e) => onNewTaskDue(e.target.value)}
                 />
               </label>
+              <div className="sm:min-w-[9rem]">
+                <Label htmlFor="new-task-priority">Приоритет</Label>
+                <select
+                  id="new-task-priority"
+                  className="mt-1 flex h-9 w-full rounded-md border border-line bg-white px-2 text-sm"
+                  value={newTaskPriority}
+                  onChange={(e) => onNewTaskPriority(e.target.value as TaskPriority)}
+                >
+                  <option value="low">Низкий</option>
+                  <option value="normal">Обычный</option>
+                  <option value="high">Высокий</option>
+                </select>
+              </div>
               <Button
                 className="shrink-0"
                 variant="primary"

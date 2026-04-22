@@ -3,7 +3,8 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import type { Task, TaskStatus } from "@/entities/task/types";
+import type { Task, TaskPriority, TaskStatus } from "@/entities/task/types";
+import { ProjectEditDialog } from "@/features/project-edit/ProjectEditDialog";
 import { TaskEditDialog } from "@/features/task-edit/TaskEditDialog";
 import { queryKeys } from "@/shared/api/query-keys";
 import { fetchProject } from "@/shared/api/projects";
@@ -29,9 +30,11 @@ export function ProjectDetailPage() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskDue, setNewTaskDue] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("normal");
   const [completingId, setCompletingId] = useState<number | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<Task | null>(null);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
 
   const projectQuery = useQuery({
     queryKey: queryKeys.projects.detail(id),
@@ -59,13 +62,14 @@ export function ProjectDetailPage() {
         description: newTaskDescription.trim() ? newTaskDescription.trim() : null,
         project_id: id,
         due_at: newTaskDue ? fromDatetimeLocalValue(newTaskDue) : null,
-        priority: "normal",
+        priority: newTaskPriority,
         status: "pending",
       }),
     onSuccess: async () => {
       setNewTaskTitle("");
       setNewTaskDescription("");
       setNewTaskDue("");
+      setNewTaskPriority("normal");
       await qc.invalidateQueries({ queryKey: queryKeys.tasks.list({ project_id: id }) });
       await qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
     },
@@ -120,9 +124,11 @@ export function ProjectDetailPage() {
             newTaskTitle={newTaskTitle}
             newTaskDescription={newTaskDescription}
             newTaskDue={newTaskDue}
+            newTaskPriority={newTaskPriority}
             onNewTaskTitle={setNewTaskTitle}
             onNewTaskDescription={setNewTaskDescription}
             onNewTaskDue={setNewTaskDue}
+            onNewTaskPriority={setNewTaskPriority}
             onCreateTask={() => createTaskMut.mutate()}
             creatingTask={createTaskMut.isPending}
             onCompleteTask={(taskId) => {
@@ -132,6 +138,13 @@ export function ProjectDetailPage() {
             onEditTask={setEditingTask}
             onDeleteTask={setDeleteTaskTarget}
             completingId={completingId}
+            onEditProject={() => setEditProjectOpen(true)}
+          />
+
+          <ProjectEditDialog
+            project={project}
+            open={editProjectOpen}
+            onOpenChange={setEditProjectOpen}
           />
 
           <TaskEditDialog

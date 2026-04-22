@@ -121,6 +121,7 @@ def format_lead_card(lead: Lead) -> str:
 def format_lead_status_label(status: LeadStatus) -> str:
     labels = {
         LeadStatus.new: "Новый",
+        LeadStatus.in_work: "В работе",
         LeadStatus.first_contact: "Первый контакт",
         LeadStatus.need_identified: "Потребность выявлена",
         LeadStatus.offer_sent: "Оффер отправлен",

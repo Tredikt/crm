@@ -16,6 +16,12 @@ export const KANBAN_COLUMNS: KanbanColumn[] = [
     targetStatus: "new",
   },
   {
+    id: "in_work",
+    title: "В работе",
+    statuses: ["in_work"],
+    targetStatus: "in_work",
+  },
+  {
     id: "first_contact",
     title: "Первый контакт",
     statuses: ["first_contact", "need_identified"],

@@ -3,6 +3,7 @@ import enum
 
 class LeadStatus(str, enum.Enum):
     new = "new"
+    in_work = "in_work"
     first_contact = "first_contact"
     need_identified = "need_identified"
     offer_sent = "offer_sent"

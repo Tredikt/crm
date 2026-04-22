@@ -181,7 +181,7 @@ async def test_leads_and_related(
         headers=auth_headers,
     )
     assert r_adv.status_code == 200
-    assert r_adv.json()["status"] == "first_contact"
+    assert r_adv.json()["status"] == "in_work"
 
     r_int = await client.get(
         f"/api/v1/leads/{lead_id}/interactions",

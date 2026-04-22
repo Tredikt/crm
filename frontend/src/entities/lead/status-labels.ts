@@ -2,6 +2,7 @@ import type { LeadStatus } from "@/entities/lead/types";
 
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   new: "Новый",
+  in_work: "В работе",
   first_contact: "Первый контакт",
   need_identified: "Потребность выявлена",
   offer_sent: "Оффер отправлен",
@@ -14,6 +15,7 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
 
 export const LEAD_STATUS_ORDER: LeadStatus[] = [
   "new",
+  "in_work",
   "first_contact",
   "need_identified",
   "offer_sent",
