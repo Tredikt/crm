@@ -8,13 +8,22 @@ from aiogram.filters import BaseFilter, Command
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from app.bot import formatting, keyboards
+from sqlalchemy import select
+
 from app.config import get_settings
 from app.db.session import async_session_factory
+from app.models.user import User
 from app.services import LeadService, ReminderService
 from app.services.lead import LeadFunnelCompleteError, LeadNotFoundError
 
 log = logging.getLogger(__name__)
 router = Router(name="crm")
+
+
+async def _get_first_user_id(session) -> int | None:
+    result = await session.scalars(select(User).order_by(User.id).limit(1))
+    user = result.first()
+    return user.id if user else None
 
 
 class AllowedUsersFilter(BaseFilter):
@@ -52,7 +61,11 @@ async def cmd_start(message: Message) -> None:
 @router.message(Command("digest"))
 async def cmd_digest(message: Message) -> None:
     async with async_session_factory() as session:
-        digest = await ReminderService(session).build_digest()
+        user_id = await _get_first_user_id(session)
+        if user_id is None:
+            await message.answer("Нет зарегистрированных пользователей.")
+            return
+        digest = await ReminderService(session, user_id).build_digest()
         await message.answer(formatting.format_digest(digest))
 
 
@@ -71,7 +84,11 @@ async def on_callback(query: CallbackQuery) -> None:
     if data.startswith("lead:advance:"):
         lead_id = int(data.split(":")[2])
         async with async_session_factory() as session:
-            svc = LeadService(session)
+            user_id = await _get_first_user_id(session)
+            if user_id is None:
+                await _send_answer(query, "Нет зарегистрированных пользователей.")
+                return
+            svc = LeadService(session, user_id)
             try:
                 lead = await svc.advance_funnel_stage(lead_id)
             except LeadNotFoundError:
@@ -112,7 +129,10 @@ async def reminder_loop(bot: Bot) -> None:
             continue
         try:
             async with async_session_factory() as session:
-                digest = await ReminderService(session).build_digest()
+                user_id = await _get_first_user_id(session)
+                if user_id is None:
+                    continue
+                digest = await ReminderService(session, user_id).build_digest()
                 if not digest.has_any:
                     last_key = None
                     continue

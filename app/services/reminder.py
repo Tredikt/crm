@@ -34,10 +34,11 @@ class ReminderDigest:
 class ReminderService:
     """Aggregates due items for bot push and /digest. Keeps DB reads in one place."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: int) -> None:
         self.session = session
-        self.tasks = TaskService(session)
-        self.projects = ProjectService(session)
+        self.user_id = user_id
+        self.tasks = TaskService(session, user_id)
+        self.projects = ProjectService(session, user_id)
         self.leads = LeadRepository(session)
 
     def _now_utc(self) -> datetime:
@@ -47,8 +48,8 @@ class ReminderService:
         now = self._now_utc()
         overdue = await self.tasks.overdue()
         today = await self.tasks.due_today()
-        due_leads = await self.leads.list_next_action_due(before=now)
-        stale = await self.leads.list_no_contact_days(stale_days, now=now)
+        due_leads = await self.leads.list_next_action_due(before=now, user_id=self.user_id)
+        stale = await self.leads.list_no_contact_days(stale_days, now=now, user_id=self.user_id)
         overdue_projects = await self.projects.list_overdue()
         active_projects = await self.projects.list_active(limit=40)
 

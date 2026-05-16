@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.models import TaskStatus
+from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services import TaskService, TaskTargetError
 
@@ -14,13 +15,14 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 @router.get("", response_model=list[TaskRead])
 async def list_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     status_filter: TaskStatus | None = Query(None, alias="status"),
     include_completed: bool = Query(False),
     lead_id: int | None = None,
     project_id: int | None = None,
     limit: int = Query(200, ge=1, le=500),
 ) -> list[TaskRead]:
-    tasks = await TaskService(db).list_tasks(
+    tasks = await TaskService(db, current_user.id).list_tasks(
         status=status_filter,
         include_completed=include_completed,
         lead_id=lead_id,
@@ -33,16 +35,18 @@ async def list_tasks(
 @router.get("/today", response_model=list[TaskRead])
 async def tasks_today(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[TaskRead]:
-    tasks = await TaskService(db).due_today()
+    tasks = await TaskService(db, current_user.id).due_today()
     return [TaskRead.model_validate(t) for t in tasks]
 
 
 @router.get("/overdue", response_model=list[TaskRead])
 async def tasks_overdue(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[TaskRead]:
-    tasks = await TaskService(db).overdue()
+    tasks = await TaskService(db, current_user.id).overdue()
     return [TaskRead.model_validate(t) for t in tasks]
 
 
@@ -50,9 +54,10 @@ async def tasks_overdue(
 async def create_task(
     body: TaskCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> TaskRead:
     try:
-        task = await TaskService(db).create(body)
+        task = await TaskService(db, current_user.id).create(body)
     except TaskTargetError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return TaskRead.model_validate(task)
@@ -62,8 +67,9 @@ async def create_task(
 async def get_task(
     task_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> TaskRead:
-    task = await TaskService(db).get(task_id)
+    task = await TaskService(db, current_user.id).get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskRead.model_validate(task)
@@ -74,9 +80,10 @@ async def update_task(
     task_id: int,
     body: TaskUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> TaskRead:
     try:
-        task = await TaskService(db).update(task_id, body)
+        task = await TaskService(db, current_user.id).update(task_id, body)
     except TaskTargetError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if task is None:
@@ -88,7 +95,8 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    ok = await TaskService(db).delete(task_id)
+    ok = await TaskService(db, current_user.id).delete(task_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Task not found")

@@ -11,23 +11,24 @@ class TaskRepository(BaseRepository[Task]):
     def __init__(self, session):
         super().__init__(session, Task)
 
-    async def list_open(self, *, limit: int = 200) -> list[Task]:
+    async def list_open(self, *, user_id: int, limit: int = 200) -> list[Task]:
         q = (
             select(Task)
             .options(selectinload(Task.lead), selectinload(Task.project))
-            .where(Task.status.in_((TaskStatus.pending, TaskStatus.in_progress)))
+            .where(Task.user_id == user_id, Task.status.in_((TaskStatus.pending, TaskStatus.in_progress)))
             .order_by(Task.due_at.asc().nullslast(), Task.id.asc())
             .limit(limit)
         )
         result = await self.session.scalars(q)
         return list(result.all())
 
-    async def list_overdue(self, *, now: datetime) -> list[Task]:
+    async def list_overdue(self, *, now: datetime, user_id: int) -> list[Task]:
         q = (
             select(Task)
             .options(selectinload(Task.lead), selectinload(Task.project))
             .where(
                 and_(
+                    Task.user_id == user_id,
                     Task.status.in_((TaskStatus.pending, TaskStatus.in_progress)),
                     Task.due_at.is_not(None),
                     Task.due_at < now,
@@ -39,13 +40,14 @@ class TaskRepository(BaseRepository[Task]):
         return list(result.all())
 
     async def list_due_today(
-        self, *, window_start: datetime, window_end: datetime
+        self, *, window_start: datetime, window_end: datetime, user_id: int
     ) -> list[Task]:
         q = (
             select(Task)
             .options(selectinload(Task.lead), selectinload(Task.project))
             .where(
                 and_(
+                    Task.user_id == user_id,
                     Task.status.in_((TaskStatus.pending, TaskStatus.in_progress)),
                     Task.due_at.is_not(None),
                     Task.due_at >= window_start,
@@ -60,6 +62,7 @@ class TaskRepository(BaseRepository[Task]):
     async def list_filtered(
         self,
         *,
+        user_id: int,
         status: TaskStatus | None = None,
         include_completed: bool = False,
         lead_id: int | None = None,
@@ -67,6 +70,7 @@ class TaskRepository(BaseRepository[Task]):
         limit: int = 200,
     ) -> list[Task]:
         q = select(Task).options(selectinload(Task.lead), selectinload(Task.project))
+        q = q.where(Task.user_id == user_id)
         if status is not None:
             q = q.where(Task.status == status)
         elif not include_completed:

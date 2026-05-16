@@ -12,12 +12,16 @@ from app.models.enums import TaskPriority, TaskStatus
 if TYPE_CHECKING:
     from app.models.lead import Lead
     from app.models.project import Project
+    from app.models.user import User
 
 
 class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     lead_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -49,3 +53,4 @@ class Task(Base):
 
     lead: Mapped[Lead | None] = relationship("Lead", back_populates="tasks")
     project: Mapped[Project | None] = relationship("Project", back_populates="tasks")
+    owner: Mapped[User] = relationship("User")

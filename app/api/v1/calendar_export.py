@@ -5,8 +5,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.config import get_settings
+from app.models.user import User
 from app.services.calendar_export_service import (
     build_feed_bytes,
     get_or_create_settings,
@@ -30,8 +31,11 @@ class CalendarExportStatus(BaseModel):
 
 
 @router.get("/status", response_model=CalendarExportStatus)
-async def export_status(db: Annotated[AsyncSession, Depends(get_db)]) -> CalendarExportStatus:
-    row = await get_or_create_settings(db)
+async def export_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CalendarExportStatus:
+    row = await get_or_create_settings(db, current_user.id)
     rel = f"/api/v1/calendar-export/feed.ics?token={row.secret_token}"
     settings = get_settings()
     base = settings.public_api_base_url.strip().rstrip("/")
@@ -54,8 +58,9 @@ class CalendarExportTokenResponse(BaseModel):
 @router.post("/regenerate", response_model=CalendarExportTokenResponse)
 async def export_regenerate(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> CalendarExportTokenResponse:
-    row = await regenerate_token(db)
+    row = await regenerate_token(db, current_user.id)
     rel = f"/api/v1/calendar-export/feed.ics?token={row.secret_token}"
     settings = get_settings()
     base = settings.public_api_base_url.strip().rstrip("/")
@@ -71,9 +76,10 @@ async def export_feed_ics(
     db: Annotated[AsyncSession, Depends(get_db)],
     token: str | None = Query(None),
 ) -> Response:
-    if not await validate_token(db, token):
+    settings_row = await validate_token(db, token)
+    if settings_row is None:
         raise HTTPException(status_code=401, detail="Неверный или отсутствует token")
-    body = await build_feed_bytes(db)
+    body = await build_feed_bytes(db, settings_row.user_id)
     return Response(
         content=body,
         media_type="text/calendar; charset=utf-8",

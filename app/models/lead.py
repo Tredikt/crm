@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,12 +15,16 @@ if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.tag import Tag
     from app.models.task import Task
+    from app.models.user import User
 
 
 class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telegram_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
@@ -70,3 +74,4 @@ class Lead(Base):
         order_by="Interaction.created_at",
     )
     tags: Mapped[list[Tag]] = relationship("Tag", secondary=lead_tags, back_populates="leads")
+    owner: Mapped[User] = relationship("User")

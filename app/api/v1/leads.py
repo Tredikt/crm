@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.models import LeadStatus
+from app.models.user import User
 from app.schemas.interaction import InteractionCreate, InteractionRead
 from app.schemas.lead import LeadCreate, LeadRead, LeadUpdate
 from app.schemas.project import ProjectCreateBody, ProjectRead
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 @router.get("", response_model=list[LeadRead])
 async def list_leads(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     status_filter: LeadStatus | None = Query(None, alias="status"),
     include_inactive: bool = False,
     no_contact_days: int | None = Query(None, ge=1, le=3650),
@@ -26,7 +28,7 @@ async def list_leads(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[LeadRead]:
-    svc = LeadService(db)
+    svc = LeadService(db, current_user.id)
     leads = await svc.list_leads(
         status=status_filter,
         include_inactive=include_inactive,
@@ -44,17 +46,19 @@ async def list_leads(
 async def create_lead(
     body: LeadCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LeadRead:
-    lead = await LeadService(db).create(body)
+    lead = await LeadService(db, current_user.id).create(body)
     return LeadRead.model_validate(lead)
 
 
 @router.get("/no-contact", response_model=list[LeadRead])
 async def leads_no_contact(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     days: int = Query(7, ge=1, le=3650),
 ) -> list[LeadRead]:
-    svc = LeadService(db)
+    svc = LeadService(db, current_user.id)
     leads = await svc.list_leads(no_contact_days=days)
     return [LeadRead.model_validate(x) for x in leads]
 
@@ -62,8 +66,9 @@ async def leads_no_contact(
 @router.get("/next-action-due", response_model=list[LeadRead])
 async def leads_next_action_due(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[LeadRead]:
-    svc = LeadService(db)
+    svc = LeadService(db, current_user.id)
     leads = await svc.list_leads(next_action_due=True)
     return [LeadRead.model_validate(x) for x in leads]
 
@@ -72,8 +77,9 @@ async def leads_next_action_due(
 async def advance_lead_funnel(
     lead_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LeadRead:
-    svc = LeadService(db)
+    svc = LeadService(db, current_user.id)
     try:
         lead = await svc.advance_funnel_stage(lead_id)
     except LeadNotFoundError:
@@ -90,8 +96,9 @@ async def advance_lead_funnel(
 async def list_lead_interactions(
     lead_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[InteractionRead]:
-    svc = LeadService(db)
+    svc = LeadService(db, current_user.id)
     if await svc.get(lead_id) is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     rows = await svc.list_interactions(lead_id)
@@ -105,11 +112,12 @@ async def list_lead_interactions(
 async def list_lead_projects(
     lead_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     include_inactive: bool = False,
 ) -> list[ProjectRead]:
-    if await LeadService(db).get(lead_id) is None:
+    if await LeadService(db, current_user.id).get(lead_id) is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    rows = await ProjectService(db).list_projects(
+    rows = await ProjectService(db, current_user.id).list_projects(
         lead_id=lead_id,
         include_inactive=include_inactive,
         limit=500,
@@ -126,9 +134,10 @@ async def create_lead_project(
     lead_id: int,
     body: ProjectCreateBody,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProjectRead:
     try:
-        p = await ProjectService(db).create_for_lead(lead_id, body)
+        p = await ProjectService(db, current_user.id).create_for_lead(lead_id, body)
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e) or "Lead not found")
     return ProjectRead.model_validate(p)
@@ -138,8 +147,9 @@ async def create_lead_project(
 async def get_lead(
     lead_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LeadRead:
-    lead = await LeadService(db).get(lead_id)
+    lead = await LeadService(db, current_user.id).get(lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return LeadRead.model_validate(lead)
@@ -150,8 +160,9 @@ async def update_lead(
     lead_id: int,
     body: LeadUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LeadRead:
-    lead = await LeadService(db).update(lead_id, body)
+    lead = await LeadService(db, current_user.id).update(lead_id, body)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return LeadRead.model_validate(lead)
@@ -161,8 +172,9 @@ async def update_lead(
 async def delete_lead(
     lead_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    ok = await LeadService(db).delete_soft(lead_id)
+    ok = await LeadService(db, current_user.id).delete_soft(lead_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -172,8 +184,9 @@ async def add_interaction(
     lead_id: int,
     body: InteractionCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> InteractionRead:
-    inter = await LeadService(db).add_interaction(lead_id, body)
+    inter = await LeadService(db, current_user.id).add_interaction(lead_id, body)
     if inter is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return InteractionRead.model_validate(inter)

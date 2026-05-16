@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Project, Task, TaskStatus
-from app.repositories import TaskRepository
+from app.repositories import LeadRepository, TaskRepository
 from app.schemas.task import TaskCreate, TaskUpdate
 
 
@@ -14,9 +14,11 @@ class TaskTargetError(ValueError):
 
 
 class TaskService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
         self.tasks = TaskRepository(session)
+        self.leads = LeadRepository(session)
 
     def _now_utc(self) -> datetime:
         return datetime.now(tz=ZoneInfo("UTC"))
@@ -30,9 +32,16 @@ class TaskService:
             proj = await self.session.get(Project, project_id)
             if proj is None or not proj.is_active:
                 raise TaskTargetError("Проект не найден или неактивен")
+            owner = await self.leads.get_with_tags(proj.lead_id, self.user_id)
+            if owner is None:
+                raise TaskTargetError("Проект не найден или неактивен")
             if lead_id is not None and lead_id != proj.lead_id:
                 raise TaskTargetError("lead_id должен совпадать с лидом проекта")
             return proj.lead_id, project_id
+        if lead_id is not None:
+            owner = await self.leads.get_with_tags(lead_id, self.user_id)
+            if owner is None:
+                raise TaskTargetError("Лид не найден")
         return lead_id, None
 
     async def create(self, data: TaskCreate) -> Task:
@@ -40,7 +49,7 @@ class TaskService:
         lid, pid = await self._resolve_task_links(raw.get("lead_id"), raw.get("project_id"))
         raw["lead_id"] = lid
         raw["project_id"] = pid
-        task = Task(**raw)
+        task = Task(user_id=self.user_id, **raw)
         self.session.add(task)
         await self.session.commit()
         await self.session.refresh(task)
@@ -48,7 +57,7 @@ class TaskService:
 
     async def update(self, task_id: int, data: TaskUpdate) -> Task | None:
         task = await self.tasks.get_by_id(task_id)
-        if task is None:
+        if task is None or task.user_id != self.user_id:
             return None
         patch = data.model_dump(exclude_unset=True)
 
@@ -70,11 +79,14 @@ class TaskService:
         return task
 
     async def get(self, task_id: int) -> Task | None:
-        return await self.tasks.get_by_id(task_id)
+        task = await self.tasks.get_by_id(task_id)
+        if task is None or task.user_id != self.user_id:
+            return None
+        return task
 
     async def delete(self, task_id: int) -> bool:
         task = await self.tasks.get_by_id(task_id)
-        if task is None:
+        if task is None or task.user_id != self.user_id:
             return False
         await self.session.delete(task)
         await self.session.commit()
@@ -92,7 +104,7 @@ class TaskService:
         return await self.update(task_id, TaskUpdate(due_at=new_due))
 
     async def overdue(self) -> list[Task]:
-        return await self.tasks.list_overdue(now=self._now_utc())
+        return await self.tasks.list_overdue(now=self._now_utc(), user_id=self.user_id)
 
     async def due_today(self) -> list[Task]:
         settings = get_settings()
@@ -102,7 +114,7 @@ class TaskService:
         end_local = start_local + timedelta(days=1)
         start_utc = start_local.astimezone(ZoneInfo("UTC"))
         end_utc = end_local.astimezone(ZoneInfo("UTC"))
-        return await self.tasks.list_due_today(window_start=start_utc, window_end=end_utc)
+        return await self.tasks.list_due_today(window_start=start_utc, window_end=end_utc, user_id=self.user_id)
 
     async def list_tasks(
         self,
@@ -114,6 +126,7 @@ class TaskService:
         limit: int = 200,
     ) -> list[Task]:
         return await self.tasks.list_filtered(
+            user_id=self.user_id,
             status=status,
             include_completed=include_completed,
             lead_id=lead_id,

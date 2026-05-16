@@ -8,11 +8,11 @@ class TagRepository(BaseRepository[Tag]):
     def __init__(self, session):
         super().__init__(session, Tag)
 
-    async def get_by_name(self, name: str) -> Tag | None:
-        q = select(Tag).where(Tag.name == name)
+    async def get_by_name(self, name: str, user_id: int) -> Tag | None:
+        q = select(Tag).where(Tag.name == name, Tag.user_id == user_id)
         return await self.session.scalar(q)
 
-    async def list_all(self, *, limit: int = 500) -> list[Tag]:
-        q = select(Tag).order_by(Tag.name.asc()).limit(limit)
+    async def list_all(self, *, user_id: int, limit: int = 500) -> list[Tag]:
+        q = select(Tag).where(Tag.user_id == user_id).order_by(Tag.name.asc()).limit(limit)
         result = await self.session.scalars(q)
         return list(result.all())

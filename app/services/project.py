@@ -20,8 +20,9 @@ _TERMINAL_DONE = (ProjectStatus.completed, ProjectStatus.cancelled)
 
 
 class ProjectService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
         self.projects = ProjectRepository(session)
         self.leads = LeadRepository(session)
 
@@ -29,7 +30,7 @@ class ProjectService:
         return datetime.now(tz=ZoneInfo("UTC"))
 
     async def create(self, data: ProjectCreate) -> Project:
-        lead = await self.leads.get_by_id(data.lead_id)
+        lead = await self.leads.get_with_tags(data.lead_id, self.user_id)
         if lead is None or not lead.is_active:
             raise ProjectNotFoundError("Lead not found or inactive")
         payload = data.model_dump()
@@ -44,7 +45,13 @@ class ProjectService:
         return await self.create(merged)
 
     async def get(self, project_id: int) -> Project | None:
-        return await self.projects.get_by_id(project_id)
+        proj = await self.projects.get_by_id(project_id)
+        if proj is None:
+            return None
+        lead = await self.leads.get_with_tags(proj.lead_id, self.user_id)
+        if lead is None:
+            return None
+        return proj
 
     async def list_projects(
         self,
@@ -57,6 +64,7 @@ class ProjectService:
         offset: int = 0,
     ) -> list[Project]:
         return await self.projects.list_filtered(
+            user_id=self.user_id,
             status=status,
             lead_id=lead_id,
             is_active=is_active,
@@ -66,14 +74,17 @@ class ProjectService:
         )
 
     async def list_active(self, *, limit: int = 200) -> list[Project]:
-        return await self.projects.list_active(limit=limit)
+        return await self.projects.list_active(user_id=self.user_id, limit=limit)
 
     async def list_overdue(self) -> list[Project]:
-        return await self.projects.list_overdue(now=self._now_utc())
+        return await self.projects.list_overdue(now=self._now_utc(), user_id=self.user_id)
 
     async def update(self, project_id: int, data: ProjectUpdate) -> Project | None:
         proj = await self.projects.get_by_id(project_id)
         if proj is None:
+            return None
+        lead = await self.leads.get_with_tags(proj.lead_id, self.user_id)
+        if lead is None:
             return None
         patch = data.model_dump(exclude_unset=True)
         status_in = patch.get("status")
@@ -117,6 +128,9 @@ class ProjectService:
     async def soft_delete(self, project_id: int) -> bool:
         proj = await self.projects.get_by_id(project_id)
         if proj is None:
+            return False
+        lead = await self.leads.get_with_tags(proj.lead_id, self.user_id)
+        if lead is None:
             return False
         proj.is_active = False
         await self.session.commit()

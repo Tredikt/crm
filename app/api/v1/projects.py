@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 from app.models import ProjectStatus
+from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectListItem, ProjectRead, ProjectUpdate
 from app.services.project import (
     ProjectNotFoundError,
@@ -31,22 +32,25 @@ def _to_list_item(p) -> ProjectListItem:
 @router.get("/active", response_model=list[ProjectListItem])
 async def list_active_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[ProjectListItem]:
-    rows = await ProjectService(db).list_active()
+    rows = await ProjectService(db, current_user.id).list_active()
     return [_to_list_item(p) for p in rows]
 
 
 @router.get("/overdue", response_model=list[ProjectListItem])
 async def list_overdue_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[ProjectListItem]:
-    rows = await ProjectService(db).list_overdue()
+    rows = await ProjectService(db, current_user.id).list_overdue()
     return [_to_list_item(p) for p in rows]
 
 
 @router.get("", response_model=list[ProjectRead])
 async def list_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     status_filter: ProjectStatus | None = Query(None, alias="status"),
     lead_id: int | None = None,
     is_active: bool | None = None,
@@ -57,7 +61,7 @@ async def list_projects(
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[ProjectRead]:
-    rows = await ProjectService(db).list_projects(
+    rows = await ProjectService(db, current_user.id).list_projects(
         status=status_filter,
         lead_id=lead_id,
         is_active=is_active,
@@ -72,9 +76,10 @@ async def list_projects(
 async def create_project(
     body: ProjectCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProjectRead:
     try:
-        p = await ProjectService(db).create(body)
+        p = await ProjectService(db, current_user.id).create(body)
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e) or "Lead not found")
     return ProjectRead.model_validate(p)
@@ -84,8 +89,9 @@ async def create_project(
 async def get_project(
     project_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProjectRead:
-    p = await ProjectService(db).get(project_id)
+    p = await ProjectService(db, current_user.id).get(project_id)
     if p is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return ProjectRead.model_validate(p)
@@ -96,9 +102,10 @@ async def update_project(
     project_id: int,
     body: ProjectUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProjectRead:
     try:
-        p = await ProjectService(db).update(project_id, body)
+        p = await ProjectService(db, current_user.id).update(project_id, body)
     except ProjectStateError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if p is None:
@@ -110,7 +117,8 @@ async def update_project(
 async def delete_project(
     project_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    ok = await ProjectService(db).soft_delete(project_id)
+    ok = await ProjectService(db, current_user.id).soft_delete(project_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Project not found")

@@ -12,14 +12,19 @@ class LeadRepository(BaseRepository[Lead]):
     def __init__(self, session):
         super().__init__(session, Lead)
 
-    async def get_with_tags(self, lead_id: int) -> Lead | None:
-        q = select(Lead).options(selectinload(Lead.tags)).where(Lead.id == lead_id)
+    async def get_with_tags(self, lead_id: int, user_id: int) -> Lead | None:
+        q = (
+            select(Lead)
+            .options(selectinload(Lead.tags))
+            .where(Lead.id == lead_id, Lead.user_id == user_id)
+        )
         result = await self.session.scalars(q)
         return result.first()
 
     async def list_filtered(
         self,
         *,
+        user_id: int,
         status: LeadStatus | None = None,
         include_inactive: bool = False,
         no_contact_since: datetime | None = None,
@@ -30,6 +35,7 @@ class LeadRepository(BaseRepository[Lead]):
         offset: int = 0,
     ) -> list[Lead]:
         q = select(Lead).options(selectinload(Lead.tags))
+        q = q.where(Lead.user_id == user_id)
         if not include_inactive:
             q = q.where(Lead.is_active == True)  # noqa: E712
         if status is not None:
@@ -66,19 +72,21 @@ class LeadRepository(BaseRepository[Lead]):
         result = await self.session.scalars(q)
         return list(result.all())
 
-    async def list_no_contact_days(self, days: int, *, now: datetime) -> list[Lead]:
+    async def list_no_contact_days(self, days: int, *, now: datetime, user_id: int) -> list[Lead]:
         threshold = now - timedelta(days=days)
-        return await self.list_filtered(no_contact_since=threshold)
+        return await self.list_filtered(user_id=user_id, no_contact_since=threshold)
 
-    async def list_next_action_due(self, *, before: datetime) -> list[Lead]:
-        return await self.list_filtered(next_action_before=before)
+    async def list_next_action_due(self, *, before: datetime, user_id: int) -> list[Lead]:
+        return await self.list_filtered(user_id=user_id, next_action_before=before)
 
-    async def sync_tags(self, lead: Lead, tag_ids: list[int] | None) -> None:
+    async def sync_tags(self, lead: Lead, tag_ids: list[int] | None, user_id: int) -> None:
         if tag_ids is None:
             return
         if not tag_ids:
             lead.tags.clear()
             return
-        result = await self.session.scalars(select(Tag).where(Tag.id.in_(tag_ids)))
+        result = await self.session.scalars(
+            select(Tag).where(Tag.id.in_(tag_ids), Tag.user_id == user_id)
+        )
         tags = list(result.all())
         lead.tags = tags

@@ -18,12 +18,13 @@ def _utc(dt: datetime) -> datetime:
     return dt.astimezone(UTC)
 
 
-async def build_lidocrm_calendar_ics(session: AsyncSession) -> bytes:
+async def build_lidocrm_calendar_ics(session: AsyncSession, user_id: int) -> bytes:
     now = datetime.now(tz=UTC)
 
     tasks = (
         await session.scalars(
             select(Task).where(
+                Task.user_id == user_id,
                 Task.due_at.is_not(None),
                 Task.status.in_((TaskStatus.pending, TaskStatus.in_progress)),
             )
@@ -33,6 +34,7 @@ async def build_lidocrm_calendar_ics(session: AsyncSession) -> bytes:
     leads = (
         await session.scalars(
             select(Lead).where(
+                Lead.user_id == user_id,
                 Lead.is_active == True,  # noqa: E712
                 Lead.next_action_at.is_not(None),
             )
@@ -41,7 +43,10 @@ async def build_lidocrm_calendar_ics(session: AsyncSession) -> bytes:
 
     projects = (
         await session.scalars(
-            select(Project).where(
+            select(Project)
+            .join(Project.lead)
+            .where(
+                Lead.user_id == user_id,
                 Project.is_active == True,  # noqa: E712
                 Project.deadline.is_not(None),
                 Project.status.not_in((ProjectStatus.completed, ProjectStatus.cancelled)),

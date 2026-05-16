@@ -34,8 +34,9 @@ FUNNEL_NEXT: dict[LeadStatus, LeadStatus | None] = {
 
 
 class LeadService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
         self.leads = LeadRepository(session)
         self.interactions = InteractionRepository(session)
 
@@ -44,32 +45,32 @@ class LeadService:
 
     async def create(self, data: LeadCreate) -> Lead:
         payload = data.model_dump(exclude={"tag_ids"})
-        lead = Lead(**payload)
+        lead = Lead(user_id=self.user_id, **payload)
         self.session.add(lead)
         await self.session.flush()
-        await self.leads.sync_tags(lead, data.tag_ids)
+        await self.leads.sync_tags(lead, data.tag_ids, self.user_id)
         await self.session.commit()
-        reloaded = await self.leads.get_with_tags(lead.id)
+        reloaded = await self.leads.get_with_tags(lead.id, self.user_id)
         assert reloaded is not None
         return reloaded
 
     async def update(self, lead_id: int, data: LeadUpdate) -> Lead | None:
-        lead = await self.leads.get_by_id(lead_id)
+        lead = await self.leads.get_with_tags(lead_id, self.user_id)
         if lead is None:
             return None
         update_data = data.model_dump(exclude_unset=True)
         tag_ids = cast(list[int] | None, update_data.pop("tag_ids", None))
         for key, value in update_data.items():
             setattr(lead, key, value)
-        await self.leads.sync_tags(lead, tag_ids)
+        await self.leads.sync_tags(lead, tag_ids, self.user_id)
         await self.session.commit()
-        return await self.leads.get_with_tags(lead_id)
+        return await self.leads.get_with_tags(lead_id, self.user_id)
 
     async def get(self, lead_id: int) -> Lead | None:
-        return await self.leads.get_with_tags(lead_id)
+        return await self.leads.get_with_tags(lead_id, self.user_id)
 
     async def delete_soft(self, lead_id: int) -> bool:
-        lead = await self.leads.get_by_id(lead_id)
+        lead = await self.leads.get_with_tags(lead_id, self.user_id)
         if lead is None:
             return False
         lead.is_active = False
@@ -80,7 +81,7 @@ class LeadService:
         return await self.interactions.list_for_lead(lead_id, limit=limit)
 
     async def add_interaction(self, lead_id: int, data: InteractionCreate) -> Interaction | None:
-        lead = await self.leads.get_by_id(lead_id)
+        lead = await self.leads.get_with_tags(lead_id, self.user_id)
         if lead is None:
             return None
         inter = Interaction(lead_id=lead_id, type=data.type, text=data.text)
@@ -100,7 +101,7 @@ class LeadService:
         next_action_at: datetime | None = None,
         new_status: LeadStatus | None = None,
     ) -> Lead | None:
-        lead = await self.leads.get_by_id(lead_id)
+        lead = await self.leads.get_with_tags(lead_id, self.user_id)
         if lead is None:
             return None
         inter = Interaction(
@@ -117,10 +118,10 @@ class LeadService:
         if new_status is not None:
             lead.status = new_status
         await self.session.commit()
-        return await self.leads.get_with_tags(lead_id)
+        return await self.leads.get_with_tags(lead_id, self.user_id)
 
     async def advance_funnel_stage(self, lead_id: int) -> Lead:
-        lead = await self.leads.get_by_id(lead_id)
+        lead = await self.leads.get_with_tags(lead_id, self.user_id)
         if lead is None:
             raise LeadNotFoundError()
         nxt = FUNNEL_NEXT.get(lead.status)
@@ -134,6 +135,7 @@ class LeadService:
             next_action="Уточнить следующий шаг в CRM",
             next_action_at=self._now_utc() + timedelta(days=1),
         )
+
         if moved is None:
             raise LeadNotFoundError()
         return moved
@@ -156,6 +158,7 @@ class LeadService:
         )
         next_before = now if next_action_due else None
         return await self.leads.list_filtered(
+            user_id=self.user_id,
             status=status,
             include_inactive=include_inactive,
             no_contact_since=no_contact_since,

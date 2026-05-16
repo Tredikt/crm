@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import and_, select
 from sqlalchemy.orm import selectinload
 
-from app.models import Project, ProjectStatus
+from app.models import Lead, Project, ProjectStatus
 from app.repositories.base import BaseRepository
 
 _TERMINAL = (ProjectStatus.completed, ProjectStatus.cancelled)
@@ -16,6 +16,7 @@ class ProjectRepository(BaseRepository[Project]):
     async def list_filtered(
         self,
         *,
+        user_id: int,
         status: ProjectStatus | None = None,
         lead_id: int | None = None,
         is_active: bool | None = None,
@@ -23,7 +24,8 @@ class ProjectRepository(BaseRepository[Project]):
         limit: int = 200,
         offset: int = 0,
     ) -> list[Project]:
-        q = select(Project).options(selectinload(Project.lead))
+        q = select(Project).options(selectinload(Project.lead)).join(Project.lead)
+        q = q.where(Lead.user_id == user_id)
         if is_active is not None:
             q = q.where(Project.is_active == is_active)
         elif not include_inactive:
@@ -37,12 +39,14 @@ class ProjectRepository(BaseRepository[Project]):
         result = await self.session.scalars(q)
         return list(result.all())
 
-    async def list_active(self, *, limit: int = 200) -> list[Project]:
+    async def list_active(self, *, user_id: int, limit: int = 200) -> list[Project]:
         q = (
             select(Project)
             .options(selectinload(Project.lead))
+            .join(Project.lead)
             .where(
                 and_(
+                    Lead.user_id == user_id,
                     Project.is_active == True,  # noqa: E712
                     Project.status.not_in(_TERMINAL),
                 )
@@ -53,12 +57,14 @@ class ProjectRepository(BaseRepository[Project]):
         result = await self.session.scalars(q)
         return list(result.all())
 
-    async def list_overdue(self, *, now: datetime) -> list[Project]:
+    async def list_overdue(self, *, now: datetime, user_id: int) -> list[Project]:
         q = (
             select(Project)
             .options(selectinload(Project.lead))
+            .join(Project.lead)
             .where(
                 and_(
+                    Lead.user_id == user_id,
                     Project.is_active == True,  # noqa: E712
                     Project.status.not_in(_TERMINAL),
                     Project.deadline.is_not(None),
