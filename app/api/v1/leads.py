@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.models import LeadStatus
 from app.models.user import User
+from app.schemas.deal import DealCreateBody, DealRead
 from app.schemas.interaction import InteractionCreate, InteractionRead
 from app.schemas.lead import LeadCreate, LeadRead, LeadUpdate
 from app.schemas.project import ProjectCreateBody, ProjectRead
+from app.services.deal import DealNotFoundError, DealService
 from app.services.lead import LeadFunnelCompleteError, LeadNotFoundError, LeadService
 from app.services.project import ProjectNotFoundError, ProjectService
 
@@ -103,6 +105,44 @@ async def list_lead_interactions(
         raise HTTPException(status_code=404, detail="Lead not found")
     rows = await svc.list_interactions(lead_id)
     return [InteractionRead.model_validate(x) for x in rows]
+
+
+@router.get(
+    "/{lead_id}/deals",
+    response_model=list[DealRead],
+)
+async def list_lead_deals(
+    lead_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    include_inactive: bool = False,
+) -> list[DealRead]:
+    if await LeadService(db, current_user.id).get(lead_id) is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    rows = await DealService(db, current_user.id).list_deals(
+        lead_id=lead_id,
+        include_inactive=include_inactive,
+        limit=500,
+    )
+    return [DealRead.model_validate(d) for d in rows]
+
+
+@router.post(
+    "/{lead_id}/deals",
+    response_model=DealRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_lead_deal(
+    lead_id: int,
+    body: DealCreateBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> DealRead:
+    try:
+        d = await DealService(db, current_user.id).create_for_lead(lead_id, body)
+    except DealNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e) or "Lead not found")
+    return DealRead.model_validate(d)
 
 
 @router.get(

@@ -11,6 +11,7 @@ from app.models.associations import lead_tags
 from app.models.enums import LeadStatus
 
 if TYPE_CHECKING:
+    from app.models.deal import Deal
     from app.models.interaction import Interaction
     from app.models.project import Project
     from app.models.tag import Tag
@@ -63,6 +64,12 @@ class Lead(Base):
         back_populates="lead",
         cascade="all, delete-orphan",
         order_by="Project.created_at",
+    )
+    deals: Mapped[list[Deal]] = relationship(
+        "Deal",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+        order_by="Deal.created_at",
     )
     tasks: Mapped[list[Task]] = relationship(
         "Task", back_populates="lead", cascade="all, delete-orphan"

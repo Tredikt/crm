@@ -42,6 +42,14 @@ class ProjectPriority(str, enum.Enum):
     high = "high"
 
 
+class DealStatus(str, enum.Enum):
+    qualification = "qualification"
+    proposal = "proposal"
+    negotiation = "negotiation"
+    won = "won"
+    lost = "lost"
+
+
 class InteractionType(str, enum.Enum):
     note = "note"
     call = "call"

@@ -3,6 +3,10 @@ import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import type { Deal } from "@/entities/deal/types";
+import { formatMoney } from "@/entities/deal/labels";
+import { isDealOverdue, isTerminalDealStatus } from "@/entities/deal/lib";
+import { DealStatusBadge } from "@/entities/deal/ui/DealStatusBadge";
 import type { LeadStatus } from "@/entities/lead/types";
 import { formatLeadStatus, LEAD_STATUS_ORDER } from "@/entities/lead/status-labels";
 import { isProjectOverdue, isTerminalProjectStatus } from "@/entities/project/lib";
@@ -11,9 +15,12 @@ import { ProjectStatusBadge } from "@/entities/project/ui/ProjectStatusBadge";
 import { formatInteractionType } from "@/entities/interaction/labels";
 import { formatTaskPriority, formatTaskStatus } from "@/entities/task/labels";
 import type { Task, TaskStatus } from "@/entities/task/types";
+import { DealCreateDialog } from "@/features/deal-create/ui/DealCreateDialog";
+import { DealEditDialog } from "@/features/deal-edit/DealEditDialog";
 import { ProjectCreateDialog } from "@/features/project-create/ui/ProjectCreateDialog";
 import { TaskEditDialog } from "@/features/task-edit/TaskEditDialog";
 import { queryKeys } from "@/shared/api/query-keys";
+import { fetchLeadDeals } from "@/shared/api/deals";
 import { fetchLeadProjects } from "@/shared/api/projects";
 import {
   addDaysUtc,
@@ -71,6 +78,12 @@ export function LeadDetailPage() {
     enabled: Number.isFinite(id),
   });
 
+  const dealsQuery = useQuery({
+    queryKey: queryKeys.deals.byLead(id),
+    queryFn: () => fetchLeadDeals(id),
+    enabled: Number.isFinite(id),
+  });
+
   const [note, setNote] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
@@ -80,6 +93,8 @@ export function LeadDetailPage() {
   const [snoozeTaskId, setSnoozeTaskId] = useState<number | null>(null);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [dealDialogOpen, setDealDialogOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
   const patchLead = useMutation({
     mutationFn: (patch: Parameters<typeof updateLead>[1]) => updateLead(id, patch),
@@ -338,6 +353,54 @@ export function LeadDetailPage() {
           </Card>
 
           <Card>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+              <CardTitle>Сделки</CardTitle>
+              <Button size="sm" variant="secondary" onClick={() => setDealDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Новая сделка
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {dealsQuery.isPending ? (
+                <Skeleton className="h-12 w-full" />
+              ) : (dealsQuery.data?.length ?? 0) === 0 ? (
+                <p className="text-sm text-ink-muted">Сделок пока нет</p>
+              ) : (
+                <ul className="space-y-2">
+                  {dealsQuery.data!.map((d) => {
+                    const overdue = isDealOverdue(d);
+                    const term = isTerminalDealStatus(d.status);
+                    return (
+                      <li key={d.id}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingDeal(d)}
+                          className={`flex w-full flex-col gap-1 rounded-md border border-line px-3 py-2 text-left text-sm transition-opacity hover:bg-surface-muted ${term ? "opacity-60" : ""} ${overdue && !term ? "border-l-4 border-l-amber-400" : ""}`}
+                        >
+                          <span className="font-medium text-ink">{d.title}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <DealStatusBadge status={d.status} />
+                            <span className="text-xs font-medium text-ink">
+                              {formatMoney(d.amount, d.currency)}
+                            </span>
+                            <Badge tone="neutral">{d.probability}%</Badge>
+                            {overdue && !term ? (
+                              <Badge tone="warn">Просрочена</Badge>
+                            ) : null}
+                          </div>
+                          <span className="text-xs text-ink-muted">
+                            Закрытие: {formatDateTime(d.expected_close_date)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader>
               <CardTitle>Новая задача по лиду</CardTitle>
             </CardHeader>
@@ -497,6 +560,20 @@ export function LeadDetailPage() {
         open={projectDialogOpen}
         onOpenChange={setProjectDialogOpen}
         fixedLeadId={id}
+      />
+
+      <DealCreateDialog
+        open={dealDialogOpen}
+        onOpenChange={setDealDialogOpen}
+        fixedLeadId={id}
+      />
+
+      <DealEditDialog
+        deal={editingDeal}
+        open={editingDeal != null}
+        onOpenChange={(open) => {
+          if (!open) setEditingDeal(null);
+        }}
       />
 
       <TaskEditDialog

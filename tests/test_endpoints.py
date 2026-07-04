@@ -105,6 +105,7 @@ async def test_protected_routes_require_auth(client: AsyncClient) -> None:
         ("/api/v1/leads", "GET"),
         ("/api/v1/tags", "GET"),
         ("/api/v1/projects", "GET"),
+        ("/api/v1/deals", "GET"),
         ("/api/v1/tasks", "GET"),
         ("/api/v1/calendar-export/status", "GET"),
     ]:
@@ -274,6 +275,86 @@ async def test_projects_routes(
     )
     assert r_soft.status_code == 200
     assert r_soft.json()["is_active"] is False
+
+
+# --- deals ---
+
+
+@pytest.mark.asyncio
+async def test_deals_routes(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    r = await client.post(
+        "/api/v1/leads",
+        headers=auth_headers,
+        json={"full_name": "Лид D"},
+    )
+    lead_id = r.json()["id"]
+    r_d = await client.post(
+        "/api/v1/deals",
+        headers=auth_headers,
+        json={"lead_id": lead_id, "title": "Сайт", "amount": 150000, "probability": 40},
+    )
+    assert r_d.status_code == 201
+    did = r_d.json()["id"]
+    assert r_d.json()["title"] == "Сайт"
+    assert r_d.json()["amount"] == 150000.0
+    assert r_d.json()["status"] == "qualification"
+
+    for path in [
+        f"/api/v1/deals/{did}",
+        "/api/v1/deals",
+        "/api/v1/deals/open",
+        "/api/v1/deals/overdue",
+        "/api/v1/deals/summary",
+        f"/api/v1/leads/{lead_id}/deals",
+    ]:
+        rr = await client.get(path, headers=auth_headers)
+        assert rr.status_code == 200, path
+
+    summary = await client.get("/api/v1/deals/summary", headers=auth_headers)
+    body = summary.json()
+    assert body["open_count"] >= 1
+    assert body["open_total_amount"] >= 150000.0
+
+    r_ld = await client.post(
+        f"/api/v1/leads/{lead_id}/deals",
+        headers=auth_headers,
+        json={"title": "Поддержка", "amount": 50000},
+    )
+    assert r_ld.status_code == 201
+
+    r_win = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"status": "won"},
+    )
+    assert r_win.status_code == 200
+    assert r_win.json()["status"] == "won"
+    assert r_win.json()["probability"] == 100
+    assert r_win.json()["closed_at"] is not None
+
+    r_back = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"status": "negotiation"},
+    )
+    assert r_back.status_code == 409
+
+    r_patch = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"title": "Сайт v2"},
+    )
+    assert r_patch.status_code == 200
+    assert r_patch.json()["title"] == "Сайт v2"
+
+    r_del = await client.delete(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+    )
+    assert r_del.status_code == 204
 
 
 # --- tasks ---
