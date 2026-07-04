@@ -18,6 +18,7 @@ COPY pyproject.toml /app/pyproject.toml
 COPY app /app/app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Install setuptools+wheel first, then the app with --no-build-isolation so pip does not
 # spawn a second isolated env that re-downloads build deps from PyPI (saves one round trip).
@@ -25,8 +26,10 @@ COPY alembic.ini /app/alembic.ini
 # (e.g. Docker Desktop → Settings → Docker Engine: "dns": ["8.8.8.8", "1.1.1.1"]).
 RUN pip install --upgrade pip \
     && pip install "setuptools>=61" wheel \
-    && pip install --no-build-isolation --no-cache-dir .
+    && pip install --no-build-isolation --no-cache-dir . \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -40,7 +40,7 @@ python -m pytest tests/ -v
 
 ## Продакшен (сервер)
 
-**Стек в Docker** по умолчанию: Postgres, миграции, **API**, **бот**, **web** (собранный SPA + nginx). Сервис **`frontend`** (Vite) только с профилем `dev` — сюда **не** входит.
+**Стек в Docker** по умолчанию: Postgres, **API** (миграции Alembic при старте контейнера), **бот**, **web** (собранный SPA + nginx). Сервис **`frontend`** (Vite) только с профилем `dev` — сюда **не** входит.
 
 **Про «SSR»:** в приложении нет **серверного** рендера React (как в Next.js): это **SPA** — `npm run build` отдаёт статику, в браузере по-прежнему гидратация. Полноценный SSR = отдельная миграция (Next/Remix/Vite SSR). Сейчас — **всё в одном `compose`**, UI в контейнере `web` без Node в рантайме (только nginx + файлы).
 
@@ -54,7 +54,7 @@ python -m pytest tests/ -v
    docker compose up -d --build
    ```
 
-   Поднимаются: `postgres` → `migrate` → `api`, `bot`, **`web`**. Состояние БД: volume `pgdata`.
+   Поднимаются: `postgres` → `api` (с `alembic upgrade head` в entrypoint) → `bot`, **`web`**. Состояние БД: volume `pgdata`.
 
 3. **Веб-интерфейс** — контейнер `web`: `http://127.0.0.1:8080` (порт задайте в `.env`: `WEB_PORT=8080` или, например, `WEB_PORT=80` на Linux при необходимости). Прокси **внутри** Docker: `location /api/` → `http://api:8000` (см. `frontend/nginx.default.conf`).
 
@@ -65,7 +65,7 @@ python -m pytest tests/ -v
 Если нужен **только** системный nginx (или certbot сразу на хосте) и **без** сервиса `web`:
 
 ```bash
-docker compose up -d --build postgres migrate api bot
+docker compose up -d --build postgres api bot
 ```
 
 Дальше вручную: `cd frontend && npm ci && npm run build`, копия `dist` (например в `/var/www/lidocrm/`), конфиг по **`deploy/server-nginx.example.conf`**, `location /api/` → `http://127.0.0.1:8000`, HTTPS — `certbot` и т.д. (см. «DNS и HTTPS» ниже).
