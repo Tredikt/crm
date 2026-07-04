@@ -21,6 +21,7 @@ export function fetchLeads(params?: {
   no_contact_days?: number;
   next_action_due?: boolean;
   search?: string;
+  tag_ids?: number[];
   include_inactive?: boolean;
   limit?: number;
   offset?: number;
@@ -31,6 +32,9 @@ export function fetchLeads(params?: {
     q.set("no_contact_days", String(params.no_contact_days));
   if (params?.next_action_due) q.set("next_action_due", "true");
   if (params?.search) q.set("search", params.search);
+  if (params?.tag_ids?.length) {
+    for (const id of params.tag_ids) q.append("tag_ids", String(id));
+  }
   if (params?.include_inactive) q.set("include_inactive", "true");
   if (params?.limit != null) q.set("limit", String(params.limit));
   if (params?.offset != null) q.set("offset", String(params.offset));

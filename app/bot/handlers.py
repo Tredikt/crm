@@ -20,10 +20,28 @@ log = logging.getLogger(__name__)
 router = Router(name="crm")
 
 
-async def _get_first_user_id(session) -> int | None:
-    result = await session.scalars(select(User).order_by(User.id).limit(1))
-    user = result.first()
-    return user.id if user else None
+async def _get_user_id_for_telegram(session, telegram_user_id: int) -> int | None:
+    user = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+    if user is not None:
+        return user.id
+    users = list(await session.scalars(select(User).order_by(User.id)))
+    if len(users) == 1:
+        return users[0].id
+    return None
+
+
+async def _link_telegram_if_solo(session, telegram_user_id: int) -> bool:
+    linked = await session.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+    if linked is not None:
+        return True
+    unlinked = list(
+        await session.scalars(select(User).where(User.telegram_user_id.is_(None)).order_by(User.id))
+    )
+    if len(unlinked) == 1:
+        unlinked[0].telegram_user_id = telegram_user_id
+        await session.commit()
+        return True
+    return False
 
 
 class AllowedUsersFilter(BaseFilter):
@@ -49,21 +67,37 @@ router.callback_query.filter(AllowedUsersFilter())
 
 @router.message(Command("start"))
 async def cmd_start(message: Message) -> None:
+    linked_hint = ""
+    if message.from_user:
+        async with async_session_factory() as session:
+            if await _link_telegram_if_solo(session, message.from_user.id):
+                linked_hint = "\n\nTelegram привязан к вашему аккаунту CRM."
+            elif await _get_user_id_for_telegram(session, message.from_user.id) is None:
+                linked_hint = (
+                    "\n\nЧтобы бот показывал ваши данные, укажите Telegram ID "
+                    f"({message.from_user.id}) в Настройках CRM."
+                )
     await message.answer(
         "LidoCRM — уведомления.\n\n"
         "При появлении просроченных задач и проектов или наступившего шага по лиду бот пришлёт сообщение. "
         "Под лидами с наступившим шагом будет кнопка «Этап завершён» — следующий этап воронки "
         "(остальное: задачи и статусы — в веб-интерфейсе).\n\n"
         "Команда /digest — полная текстовая сводка."
+        f"{linked_hint}"
     )
 
 
 @router.message(Command("digest"))
 async def cmd_digest(message: Message) -> None:
+    if not message.from_user:
+        return
     async with async_session_factory() as session:
-        user_id = await _get_first_user_id(session)
+        user_id = await _get_user_id_for_telegram(session, message.from_user.id)
         if user_id is None:
-            await message.answer("Нет зарегистрированных пользователей.")
+            await message.answer(
+                "Аккаунт не привязан. Укажите ваш Telegram ID в Настройках CRM "
+                f"({message.from_user.id})."
+            )
             return
         digest = await ReminderService(session, user_id).build_digest()
         await message.answer(formatting.format_digest(digest))
@@ -83,10 +117,12 @@ async def on_callback(query: CallbackQuery) -> None:
 
     if data.startswith("lead:advance:"):
         lead_id = int(data.split(":")[2])
+        if not query.from_user:
+            return
         async with async_session_factory() as session:
-            user_id = await _get_first_user_id(session)
+            user_id = await _get_user_id_for_telegram(session, query.from_user.id)
             if user_id is None:
-                await _send_answer(query, "Нет зарегистрированных пользователей.")
+                await _send_answer(query, "Аккаунт не привязан. Настройте Telegram ID в CRM.")
                 return
             svc = LeadService(session, user_id)
             try:
@@ -122,30 +158,30 @@ def _push_dedup_key(digest) -> tuple:
 async def reminder_loop(bot: Bot) -> None:
     settings = get_settings()
     recipients = settings.allowed_telegram_user_ids_set
-    last_key: tuple | None = None
+    last_key_by_user: dict[int, tuple] = {}
     while True:
         await asyncio.sleep(max(15, settings.reminder_interval_seconds))
         if not recipients:
             continue
         try:
             async with async_session_factory() as session:
-                user_id = await _get_first_user_id(session)
-                if user_id is None:
-                    continue
-                digest = await ReminderService(session, user_id).build_digest()
-                if not digest.has_any:
-                    last_key = None
-                    continue
-                msg = formatting.format_push_message(digest)
-                kb = keyboards.advance_keyboard_from_leads(digest.leads_next_action_due)
-                key = _push_dedup_key(digest)
-                if key == last_key:
-                    continue
-                last_key = key
-                if not msg.strip() and kb is None:
-                    continue
-                out = msg.strip() or "LidoCRM · есть элементы в сводке (/digest)."
                 for uid in recipients:
+                    user_id = await _get_user_id_for_telegram(session, uid)
+                    if user_id is None:
+                        continue
+                    digest = await ReminderService(session, user_id).build_digest()
+                    if not digest.has_any:
+                        last_key_by_user.pop(uid, None)
+                        continue
+                    msg = formatting.format_push_message(digest)
+                    kb = keyboards.advance_keyboard_from_leads(digest.leads_next_action_due)
+                    key = _push_dedup_key(digest)
+                    if last_key_by_user.get(uid) == key:
+                        continue
+                    last_key_by_user[uid] = key
+                    if not msg.strip() and kb is None:
+                        continue
+                    out = msg.strip() or "LidoCRM · есть элементы в сводке (/digest)."
                     await bot.send_message(uid, out, reply_markup=kb)
         except Exception:
             log.exception("reminder_loop tick failed")

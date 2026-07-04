@@ -86,5 +86,7 @@ class DealSummary(ORMModel):
     open_total_amount: float
     weighted_pipeline: float
     won_total_amount: float
+    lost_count: int = 0
+    win_rate: float | None = None
     currency: str = "RUB"
     by_status: list[DealStatusSummary]

@@ -18,6 +18,7 @@ import {
   fetchDealsOverdue,
   fetchDealsSummary,
 } from "@/shared/api/deals";
+import { DealFunnelChart } from "@/widgets/deals/DealFunnelChart";
 import { QueryError } from "@/widgets/query-error/QueryError";
 import { DealsListTable } from "@/widgets/deals-list/DealsListTable";
 import { Button } from "@/shared/ui/button";
@@ -154,6 +155,8 @@ export function DealsPage() {
           </Card>
         </div>
       ) : null}
+
+      {summary ? <DealFunnelChart summary={summary} /> : null}
 
       <div className="flex flex-wrap gap-2">
         {presets.map((t) => (

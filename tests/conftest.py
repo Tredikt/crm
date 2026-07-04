@@ -22,6 +22,7 @@ os.environ["DEBUG"] = "false"
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test")
 os.environ.setdefault("TELEGRAM_ALLOWED_USER_IDS", "")
 os.environ.setdefault("CORS_ORIGINS", "http://test")
+os.environ.setdefault("AUTH_ALLOW_REGISTRATION", "true")
 
 import httpx
 import pytest_asyncio

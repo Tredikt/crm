@@ -145,6 +145,9 @@ class DealService:
         rows = await self.deals.list_all_active(user_id=self.user_id)
         open_rows = [d for d in rows if d.status not in _TERMINAL]
         won_rows = [d for d in rows if d.status == DealStatus.won]
+        lost_rows = [d for d in rows if d.status == DealStatus.lost]
+        closed_count = len(won_rows) + len(lost_rows)
+        win_rate = (len(won_rows) / closed_count * 100) if closed_count else None
 
         open_total = sum((d.amount for d in open_rows), Decimal("0"))
         weighted = sum(
@@ -172,5 +175,7 @@ class DealService:
             open_total_amount=float(open_total),
             weighted_pipeline=float(weighted),
             won_total_amount=float(won_total),
+            lost_count=len(lost_rows),
+            win_rate=round(win_rate, 1) if win_rate is not None else None,
             by_status=by_status,
         )

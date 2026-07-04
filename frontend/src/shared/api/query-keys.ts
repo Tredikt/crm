@@ -23,6 +23,13 @@ export const queryKeys = {
     byLead: (leadId: number, includeInactive?: boolean) =>
       ["projects", "lead", leadId, Boolean(includeInactive)] as const,
   },
+  tags: {
+    all: ["tags"] as const,
+  },
+  companies: {
+    all: ["companies"] as const,
+    list: (search?: string) => ["companies", "list", search ?? ""] as const,
+  },
   deals: {
     all: ["deals"] as const,
     summary: () => ["deals", "summary"] as const,

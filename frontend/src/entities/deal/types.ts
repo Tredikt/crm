@@ -26,6 +26,8 @@ export interface DealSummary {
   open_total_amount: number;
   weighted_pipeline: number;
   won_total_amount: number;
+  lost_count: number;
+  win_rate: number | null;
   currency: string;
   by_status: {
     status: DealStatus;

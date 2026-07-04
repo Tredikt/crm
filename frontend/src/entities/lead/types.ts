@@ -28,7 +28,8 @@ export interface Lead {
   next_action_at: string | null;
   budget: string | null;
   is_active: boolean;
-  tag_ids: number[] | null;
+  tag_ids?: number[] | null;
+  company_id?: number | null;
   created_at: string;
   updated_at: string;
   tags: Tag[];
@@ -50,6 +51,7 @@ export interface LeadCreatePayload {
   budget?: string | null;
   is_active?: boolean;
   tag_ids?: number[] | null;
+  company_id?: number | null;
 }
 
 export interface LeadUpdatePayload {
@@ -68,4 +70,5 @@ export interface LeadUpdatePayload {
   budget?: string | null;
   is_active?: boolean;
   tag_ids?: number[] | null;
+  company_id?: number | null;
 }

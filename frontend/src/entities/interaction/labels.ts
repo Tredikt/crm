@@ -13,3 +13,13 @@ const TYPE_LABELS: Record<InteractionType, string> = {
 export function formatInteractionType(type: InteractionType): string {
   return TYPE_LABELS[type] ?? type;
 }
+
+export const INTERACTION_TYPE_OPTIONS: InteractionType[] = [
+  "note",
+  "call",
+  "message",
+  "telegram",
+  "email",
+  "meeting",
+  "other",
+];

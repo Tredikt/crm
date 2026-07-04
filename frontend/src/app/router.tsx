@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout } from "@/app/layout/AppLayout";
 import { RequireAuth } from "@/app/RequireAuth";
+import { CompaniesPage } from "@/pages/CompaniesPage";
 import { DealsPage } from "@/pages/DealsPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LeadCreatePage } from "@/pages/LeadCreatePage";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
           { path: "leads/new", element: <LeadCreatePage /> },
           { path: "leads/:leadId", element: <LeadDetailPage /> },
           { path: "deals", element: <DealsPage /> },
+          { path: "companies", element: <CompaniesPage /> },
           { path: "projects", element: <ProjectsPage /> },
           { path: "projects/:projectId", element: <ProjectDetailPage /> },
           { path: "tasks", element: <TasksPage /> },
