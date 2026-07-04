@@ -3,18 +3,31 @@ import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import type { Deal } from "@/entities/deal/types";
+import { formatMoney } from "@/entities/deal/labels";
+import { isDealOverdue, isTerminalDealStatus } from "@/entities/deal/lib";
+import { DealStatusBadge } from "@/entities/deal/ui/DealStatusBadge";
 import type { LeadStatus } from "@/entities/lead/types";
 import { formatLeadStatus, LEAD_STATUS_ORDER } from "@/entities/lead/status-labels";
 import { isProjectOverdue, isTerminalProjectStatus } from "@/entities/project/lib";
 import { ProjectPriorityBadge } from "@/entities/project/ui/ProjectPriorityBadge";
 import { ProjectStatusBadge } from "@/entities/project/ui/ProjectStatusBadge";
-import { formatInteractionType } from "@/entities/interaction/labels";
+import type { InteractionType } from "@/entities/interaction/types";
+import {
+  formatInteractionType,
+  INTERACTION_TYPE_OPTIONS,
+} from "@/entities/interaction/labels";
 import { formatTaskPriority, formatTaskStatus } from "@/entities/task/labels";
 import type { Task, TaskStatus } from "@/entities/task/types";
+import { DealCreateDialog } from "@/features/deal-create/ui/DealCreateDialog";
+import { DealEditDialog } from "@/features/deal-edit/DealEditDialog";
 import { ProjectCreateDialog } from "@/features/project-create/ui/ProjectCreateDialog";
 import { TaskEditDialog } from "@/features/task-edit/TaskEditDialog";
 import { queryKeys } from "@/shared/api/query-keys";
+import { fetchCompanies } from "@/shared/api/companies";
+import { fetchLeadDeals } from "@/shared/api/deals";
 import { fetchLeadProjects } from "@/shared/api/projects";
+import { fetchTags } from "@/shared/api/tags";
 import {
   addDaysUtc,
   formatDateTime,
@@ -71,7 +84,26 @@ export function LeadDetailPage() {
     enabled: Number.isFinite(id),
   });
 
+  const dealsQuery = useQuery({
+    queryKey: queryKeys.deals.byLead(id),
+    queryFn: () => fetchLeadDeals(id),
+    enabled: Number.isFinite(id),
+  });
+
+  const tagsQuery = useQuery({
+    queryKey: queryKeys.tags.all,
+    queryFn: fetchTags,
+    enabled: Number.isFinite(id),
+  });
+
+  const companiesQuery = useQuery({
+    queryKey: queryKeys.companies.list(""),
+    queryFn: () => fetchCompanies({ limit: 500 }),
+    enabled: Number.isFinite(id),
+  });
+
   const [note, setNote] = useState("");
+  const [interactionType, setInteractionType] = useState<InteractionType>("note");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskDue, setNewTaskDue] = useState("");
@@ -80,6 +112,8 @@ export function LeadDetailPage() {
   const [snoozeTaskId, setSnoozeTaskId] = useState<number | null>(null);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [dealDialogOpen, setDealDialogOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
   const patchLead = useMutation({
     mutationFn: (patch: Parameters<typeof updateLead>[1]) => updateLead(id, patch),
@@ -109,7 +143,8 @@ export function LeadDetailPage() {
   });
 
   const addNote = useMutation({
-    mutationFn: () => createInteraction(id, { type: "note", text: note.trim() }),
+    mutationFn: () =>
+      createInteraction(id, { type: interactionType, text: note.trim() }),
     onSuccess: async () => {
       setNote("");
       await qc.invalidateQueries({ queryKey: queryKeys.leads.interactions(id) });
@@ -277,6 +312,58 @@ export function LeadDetailPage() {
                 />
               </label>
               <label className="block text-xs font-medium text-ink-muted md:col-span-2">
+                Компания
+                <select
+                  className="mt-1 flex h-9 w-full rounded-md border border-line bg-white px-2 text-sm"
+                  value={lead.company_id ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    patchLead.mutate({
+                      company_id: v ? parseInt(v, 10) : null,
+                    });
+                  }}
+                >
+                  <option value="">— не указана —</option>
+                  {(companiesQuery.data ?? []).map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-ink-muted md:col-span-2">
+                Теги
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(tagsQuery.data ?? []).length === 0 ? (
+                    <span className="text-sm text-ink-muted">
+                      Создайте теги в Настройках
+                    </span>
+                  ) : (
+                    (tagsQuery.data ?? []).map((t) => {
+                      const selected = (lead.tags ?? []).some((x) => x.id === t.id);
+                      return (
+                        <label
+                          key={t.id}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line px-2 py-1 text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => {
+                              const ids = new Set((lead.tags ?? []).map((x) => x.id));
+                              if (selected) ids.delete(t.id);
+                              else ids.add(t.id);
+                              patchLead.mutate({ tag_ids: [...ids] });
+                            }}
+                          />
+                          {t.name}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </label>
+              <label className="block text-xs font-medium text-ink-muted md:col-span-2">
                 Комментарий
                 <Textarea
                   className="mt-1"
@@ -338,6 +425,54 @@ export function LeadDetailPage() {
           </Card>
 
           <Card>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+              <CardTitle>Сделки</CardTitle>
+              <Button size="sm" variant="secondary" onClick={() => setDealDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Новая сделка
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {dealsQuery.isPending ? (
+                <Skeleton className="h-12 w-full" />
+              ) : (dealsQuery.data?.length ?? 0) === 0 ? (
+                <p className="text-sm text-ink-muted">Сделок пока нет</p>
+              ) : (
+                <ul className="space-y-2">
+                  {dealsQuery.data!.map((d) => {
+                    const overdue = isDealOverdue(d);
+                    const term = isTerminalDealStatus(d.status);
+                    return (
+                      <li key={d.id}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingDeal(d)}
+                          className={`flex w-full flex-col gap-1 rounded-md border border-line px-3 py-2 text-left text-sm transition-opacity hover:bg-surface-muted ${term ? "opacity-60" : ""} ${overdue && !term ? "border-l-4 border-l-amber-400" : ""}`}
+                        >
+                          <span className="font-medium text-ink">{d.title}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <DealStatusBadge status={d.status} />
+                            <span className="text-xs font-medium text-ink">
+                              {formatMoney(d.amount, d.currency)}
+                            </span>
+                            <Badge tone="neutral">{d.probability}%</Badge>
+                            {overdue && !term ? (
+                              <Badge tone="warn">Просрочена</Badge>
+                            ) : null}
+                          </div>
+                          <span className="text-xs text-ink-muted">
+                            Закрытие: {formatDateTime(d.expected_close_date)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader>
               <CardTitle>Новая задача по лиду</CardTitle>
             </CardHeader>
@@ -387,6 +522,20 @@ export function LeadDetailPage() {
               <CardTitle>История</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <label className="block text-xs font-medium text-ink-muted">
+                Тип касания
+                <select
+                  className="mt-1 flex h-9 w-full max-w-xs rounded-md border border-line bg-white px-2 text-sm"
+                  value={interactionType}
+                  onChange={(e) => setInteractionType(e.target.value as InteractionType)}
+                >
+                  {INTERACTION_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {formatInteractionType(t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Textarea
                   placeholder="Заметка о касании…"
@@ -497,6 +646,20 @@ export function LeadDetailPage() {
         open={projectDialogOpen}
         onOpenChange={setProjectDialogOpen}
         fixedLeadId={id}
+      />
+
+      <DealCreateDialog
+        open={dealDialogOpen}
+        onOpenChange={setDealDialogOpen}
+        fixedLeadId={id}
+      />
+
+      <DealEditDialog
+        deal={editingDeal}
+        open={editingDeal != null}
+        onOpenChange={(open) => {
+          if (!open) setEditingDeal(null);
+        }}
       />
 
       <TaskEditDialog

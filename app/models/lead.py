@@ -11,6 +11,8 @@ from app.models.associations import lead_tags
 from app.models.enums import LeadStatus
 
 if TYPE_CHECKING:
+    from app.models.company import Company
+    from app.models.deal import Deal
     from app.models.interaction import Interaction
     from app.models.project import Project
     from app.models.tag import Tag
@@ -24,6 +26,9 @@ class Lead(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    company_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -64,6 +69,12 @@ class Lead(Base):
         cascade="all, delete-orphan",
         order_by="Project.created_at",
     )
+    deals: Mapped[list[Deal]] = relationship(
+        "Deal",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+        order_by="Deal.created_at",
+    )
     tasks: Mapped[list[Task]] = relationship(
         "Task", back_populates="lead", cascade="all, delete-orphan"
     )
@@ -74,4 +85,5 @@ class Lead(Base):
         order_by="Interaction.created_at",
     )
     tags: Mapped[list[Tag]] = relationship("Tag", secondary=lead_tags, back_populates="leads")
+    company: Mapped[Company | None] = relationship("Company", back_populates="leads")
     owner: Mapped[User] = relationship("User")

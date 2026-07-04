@@ -1,5 +1,6 @@
 from app.models import associations as _associations  # noqa: F401
 from app.models.enums import (
+    DealStatus,
     InteractionType,
     LeadStatus,
     ProjectPriority,
@@ -7,6 +8,8 @@ from app.models.enums import (
     TaskPriority,
     TaskStatus,
 )
+from app.models.company import Company
+from app.models.deal import Deal
 from app.models.interaction import Interaction
 from app.models.lead import Lead
 from app.models.project import Project
@@ -16,6 +19,9 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "Company",
+    "Deal",
+    "DealStatus",
     "Interaction",
     "InteractionType",
     "Lead",

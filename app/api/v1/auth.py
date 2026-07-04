@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.schemas.auth import TokenResponse, UserLogin, UserRead, UserRegister
+from app.schemas.auth import TokenResponse, UserLogin, UserRead, UserRegister, UserUpdate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -56,4 +56,32 @@ async def login(
 async def me(
     current: Annotated[User, Depends(get_current_user)],
 ) -> UserRead:
+    return UserRead.model_validate(current)
+
+
+@router.patch("/me", response_model=UserRead)
+async def update_me(
+    body: UserUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current: Annotated[User, Depends(get_current_user)],
+) -> UserRead:
+    patch = body.model_dump(exclude_unset=True)
+    if "telegram_user_id" in patch:
+        tg = patch["telegram_user_id"]
+        if tg is not None:
+            from sqlalchemy import select
+
+            q = select(User).where(
+                User.telegram_user_id == tg,
+                User.id != current.id,
+            )
+            existing = await db.scalar(q)
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Этот Telegram ID уже привязан к другому пользователю",
+                )
+        current.telegram_user_id = tg
+    await db.commit()
+    await db.refresh(current)
     return UserRead.model_validate(current)

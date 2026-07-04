@@ -1,8 +1,10 @@
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
+import { formatMoney } from "@/entities/deal/labels";
 import { formatDateTime, isDueToday } from "@/shared/lib/dates";
 import { queryKeys } from "@/shared/api/query-keys";
+import { fetchDealsSummary } from "@/shared/api/deals";
 import { QueryError } from "@/widgets/query-error/QueryError";
 import {
   fetchLeadsNextActionDue,
@@ -42,10 +44,14 @@ export function DashboardPage() {
         queryKey: queryKeys.leads.nextActionDue(),
         queryFn: fetchLeadsNextActionDue,
       },
+      {
+        queryKey: queryKeys.deals.summary(),
+        queryFn: fetchDealsSummary,
+      },
     ],
   });
 
-  const [todayTasks, overdueTasks, stale, nextDue] = results;
+  const [todayTasks, overdueTasks, stale, nextDue, dealsSummary] = results;
   const err = results.find((r) => r.isError)?.error;
 
   if (err) return <QueryError error={err} />;
@@ -60,12 +66,50 @@ export function DashboardPage() {
     (l) => l.next_action_at && isLeadNextOverdue(l.next_action_at),
   );
 
+  const pipeline = dealsSummary.data;
+  const pipelineCurrency = pipeline?.currency ?? "RUB";
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-ink">Дашборд</h1>
         <p className="text-sm text-ink-muted">Сводка на сегодня</p>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>Продажи (pipeline)</CardTitle>
+          <Link to="/deals" className="text-xs text-accent hover:underline">
+            Все сделки →
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : !pipeline ? (
+            <p className="text-sm text-ink-muted">Нет данных</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-ink-muted">Открытые сделки</p>
+                <p className="text-lg font-semibold text-ink">{pipeline.open_count}</p>
+              </div>
+              <div>
+                <p className="text-xs text-ink-muted">Сумма pipeline</p>
+                <p className="text-lg font-semibold text-ink">
+                  {formatMoney(pipeline.open_total_amount, pipelineCurrency)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-ink-muted">Прогноз (взвешенный)</p>
+                <p className="text-lg font-semibold text-ink">
+                  {formatMoney(pipeline.weighted_pipeline, pipelineCurrency)}
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

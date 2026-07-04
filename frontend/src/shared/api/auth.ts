@@ -3,7 +3,12 @@ import { apiRequest } from "@/shared/api/http";
 export type UserMe = {
   id: number;
   email: string;
+  telegram_user_id: number | null;
 };
+
+export async function updateMeRequest(patch: { telegram_user_id: number | null }) {
+  return apiRequest<UserMe>("/auth/me", { method: "PATCH", json: patch });
+}
 
 export type TokenResponse = {
   access_token: string;

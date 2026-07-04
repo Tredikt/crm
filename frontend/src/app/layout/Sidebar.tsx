@@ -1,5 +1,7 @@
 import {
+  Building2,
   FolderKanban,
+  HandCoins,
   KanbanSquare,
   LayoutDashboard,
   ListTodo,
@@ -18,6 +20,8 @@ const nav = [
   { to: "/", label: "Дашборд", icon: LayoutDashboard },
   { to: "/leads", label: "Воронка", icon: KanbanSquare },
   { to: "/leads/new", label: "Новый клиент", icon: UserPlus },
+  { to: "/deals", label: "Сделки", icon: HandCoins },
+  { to: "/companies", label: "Компании", icon: Building2 },
   { to: "/projects", label: "Проекты", icon: FolderKanban },
   { to: "/tasks", label: "Задачи", icon: ListTodo },
   { to: "/settings", label: "Настройки", icon: Settings },

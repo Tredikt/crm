@@ -18,9 +18,11 @@ import { KanbanColumnView } from "@/features/kanban/ui/KanbanColumn";
 import type { Lead, LeadStatus } from "@/entities/lead/types";
 import { formatLeadStatus, LEAD_STATUS_ORDER } from "@/entities/lead/status-labels";
 import { queryKeys } from "@/shared/api/query-keys";
+import { fetchTags } from "@/shared/api/tags";
 import { QueryError } from "@/widgets/query-error/QueryError";
 import { LeadsTableView } from "@/widgets/leads-table/LeadsTableView";
 import { fetchLeads, updateLead } from "@/services/api";
+import { Input } from "@/shared/ui/input";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/lib/cn";
 
@@ -34,6 +36,56 @@ export function LeadsKanbanPage() {
 
   const statusFilter = (searchParams.get("status") as LeadStatus | "") || "";
   const includeInactive = searchParams.get("inactive") === "1";
+  const searchQuery = searchParams.get("q") || "";
+  const tagFilterRaw = searchParams.get("tag") || "";
+  const tagFilterId = tagFilterRaw ? parseInt(tagFilterRaw, 10) : null;
+
+  const tagsQuery = useQuery({
+    queryKey: queryKeys.tags.all,
+    queryFn: fetchTags,
+  });
+
+  const setSearchQuery = (q: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (q.trim()) nextParams.set("q", q.trim());
+    else nextParams.delete("q");
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const setTagFilter = (tagId: number | null) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (tagId != null) nextParams.set("tag", String(tagId));
+    else nextParams.delete("tag");
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const leadListParams = {
+    limit: 500,
+    search: searchQuery || undefined,
+    tag_ids: tagFilterId != null && Number.isFinite(tagFilterId) ? [tagFilterId] : undefined,
+  };
+
+  const kanbanQuery = useQuery({
+    queryKey: queryKeys.leads.list({ ...leadListParams, mode: "kanban" }),
+    queryFn: () => fetchLeads(leadListParams),
+    enabled: view === "kanban",
+  });
+
+  const tableQuery = useQuery({
+    queryKey: queryKeys.leads.list({
+      ...leadListParams,
+      mode: "table",
+      status: statusFilter || undefined,
+      include_inactive: includeInactive,
+    }),
+    queryFn: () =>
+      fetchLeads({
+        ...leadListParams,
+        ...(statusFilter ? { status: statusFilter } : {}),
+        include_inactive: includeInactive,
+      }),
+    enabled: view === "table",
+  });
 
   const setView = (next: LeadsView) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -63,28 +115,6 @@ export function LeadsKanbanPage() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
-
-  const kanbanQuery = useQuery({
-    queryKey: queryKeys.leads.list({ limit: 500, mode: "kanban" }),
-    queryFn: () => fetchLeads({ limit: 500 }),
-    enabled: view === "kanban",
-  });
-
-  const tableQuery = useQuery({
-    queryKey: queryKeys.leads.list({
-      limit: 500,
-      mode: "table",
-      status: statusFilter || undefined,
-      include_inactive: includeInactive,
-    }),
-    queryFn: () =>
-      fetchLeads({
-        limit: 500,
-        ...(statusFilter ? { status: statusFilter } : {}),
-        include_inactive: includeInactive,
-      }),
-    enabled: view === "table",
-  });
 
   const activeQuery = view === "kanban" ? kanbanQuery : tableQuery;
 
@@ -170,6 +200,42 @@ export function LeadsKanbanPage() {
             Новый клиент
           </Link>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="block min-w-[160px] flex-1 text-xs font-medium text-ink-muted">
+          Поиск
+          <Input
+            className="mt-1"
+            defaultValue={searchQuery}
+            key={searchQuery}
+            placeholder="Имя, телефон, username…"
+            onBlur={(e) => {
+              if (e.target.value.trim() !== searchQuery) setSearchQuery(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setSearchQuery((e.target as HTMLInputElement).value);
+            }}
+          />
+        </label>
+        <label className="block w-full text-xs font-medium text-ink-muted sm:w-44">
+          Тег
+          <select
+            className="mt-1 flex h-9 w-full rounded-md border border-line bg-white px-2 text-sm"
+            value={tagFilterRaw}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTagFilter(v ? parseInt(v, 10) : null);
+            }}
+          >
+            <option value="">Все</option>
+            {(tagsQuery.data ?? []).map((t) => (
+              <option key={t.id} value={String(t.id)}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {view === "table" ? (

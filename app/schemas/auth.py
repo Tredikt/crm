@@ -19,5 +19,10 @@ class TokenResponse(BaseModel):
 class UserRead(BaseModel):
     id: int
     email: str
+    telegram_user_id: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdate(BaseModel):
+    telegram_user_id: int | None = None

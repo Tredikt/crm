@@ -19,6 +19,7 @@ class LeadBase(ORMModel):
     next_action: str | None = None
     next_action_at: datetime | None = None
     budget: str | None = None
+    company_id: int | None = None
     is_active: bool = True
     tag_ids: list[int] | None = None
 
@@ -41,6 +42,7 @@ class LeadUpdate(ORMModel):
     next_action: str | None = None
     next_action_at: datetime | None = None
     budget: str | None = None
+    company_id: int | None = None
     is_active: bool | None = None
     tag_ids: list[int] | None = None
 

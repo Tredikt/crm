@@ -44,7 +44,7 @@ async def test_auth_register_login_me(
 @pytest.mark.asyncio
 async def test_auth_me_unauthorized(client: AsyncClient) -> None:
     r = await client.get("/api/v1/auth/me")
-    assert r.status_code == 403
+    assert r.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -105,11 +105,14 @@ async def test_protected_routes_require_auth(client: AsyncClient) -> None:
         ("/api/v1/leads", "GET"),
         ("/api/v1/tags", "GET"),
         ("/api/v1/projects", "GET"),
+        ("/api/v1/deals", "GET"),
+        ("/api/v1/companies", "GET"),
+        ("/api/v1/import-export/leads.csv", "GET"),
         ("/api/v1/tasks", "GET"),
         ("/api/v1/calendar-export/status", "GET"),
     ]:
         r = await client.request(method, path)
-        assert r.status_code == 403, path
+        assert r.status_code == 401, path
 
 
 # --- tags ---
@@ -274,6 +277,158 @@ async def test_projects_routes(
     )
     assert r_soft.status_code == 200
     assert r_soft.json()["is_active"] is False
+
+
+# --- deals ---
+
+
+@pytest.mark.asyncio
+async def test_deals_routes(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    r = await client.post(
+        "/api/v1/leads",
+        headers=auth_headers,
+        json={"full_name": "Лид D"},
+    )
+    lead_id = r.json()["id"]
+    r_d = await client.post(
+        "/api/v1/deals",
+        headers=auth_headers,
+        json={"lead_id": lead_id, "title": "Сайт", "amount": 150000, "probability": 40},
+    )
+    assert r_d.status_code == 201
+    did = r_d.json()["id"]
+    assert r_d.json()["title"] == "Сайт"
+    assert r_d.json()["amount"] == 150000.0
+    assert r_d.json()["status"] == "qualification"
+
+    for path in [
+        f"/api/v1/deals/{did}",
+        "/api/v1/deals",
+        "/api/v1/deals/open",
+        "/api/v1/deals/overdue",
+        "/api/v1/deals/summary",
+        f"/api/v1/leads/{lead_id}/deals",
+    ]:
+        rr = await client.get(path, headers=auth_headers)
+        assert rr.status_code == 200, path
+
+    summary = await client.get("/api/v1/deals/summary", headers=auth_headers)
+    body = summary.json()
+    assert body["open_count"] >= 1
+    assert body["open_total_amount"] >= 150000.0
+
+    r_ld = await client.post(
+        f"/api/v1/leads/{lead_id}/deals",
+        headers=auth_headers,
+        json={"title": "Поддержка", "amount": 50000},
+    )
+    assert r_ld.status_code == 201
+
+    r_win = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"status": "won"},
+    )
+    assert r_win.status_code == 200
+    assert r_win.json()["status"] == "won"
+    assert r_win.json()["probability"] == 100
+    assert r_win.json()["closed_at"] is not None
+
+    r_back = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"status": "negotiation"},
+    )
+    assert r_back.status_code == 409
+
+    r_patch = await client.patch(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+        json={"title": "Сайт v2"},
+    )
+    assert r_patch.status_code == 200
+    assert r_patch.json()["title"] == "Сайт v2"
+
+    r_del = await client.delete(
+        f"/api/v1/deals/{did}",
+        headers=auth_headers,
+    )
+    assert r_del.status_code == 204
+
+
+# --- companies ---
+
+
+@pytest.mark.asyncio
+async def test_companies_routes(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    r = await client.post(
+        "/api/v1/companies",
+        headers=auth_headers,
+        json={"name": "Acme LLC"},
+    )
+    assert r.status_code == 201
+    cid = r.json()["id"]
+
+    r_list = await client.get("/api/v1/companies", headers=auth_headers)
+    assert r_list.status_code == 200
+    assert any(c["id"] == cid for c in r_list.json())
+
+    r_get = await client.get(f"/api/v1/companies/{cid}", headers=auth_headers)
+    assert r_get.status_code == 200
+
+    r_patch = await client.patch(
+        f"/api/v1/companies/{cid}",
+        headers=auth_headers,
+        json={"name": "Acme 2"},
+    )
+    assert r_patch.status_code == 200
+    assert r_patch.json()["name"] == "Acme 2"
+
+
+# --- import/export ---
+
+
+@pytest.mark.asyncio
+async def test_import_export_csv(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    r_exp = await client.get("/api/v1/import-export/leads.csv", headers=auth_headers)
+    assert r_exp.status_code == 200
+    assert "text/csv" in r_exp.headers.get("content-type", "")
+    assert "full_name" in r_exp.text
+
+    csv_body = "full_name,phone,status\nImport One,+7999,new\n"
+    r_imp = await client.post(
+        "/api/v1/import-export/leads/import",
+        headers=auth_headers,
+        files={"file": ("leads.csv", csv_body, "text/csv")},
+    )
+    assert r_imp.status_code == 200
+    assert r_imp.json()["created"] == 1
+
+
+# --- auth profile ---
+
+
+@pytest.mark.asyncio
+async def test_auth_update_telegram(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    r = await client.patch(
+        "/api/v1/auth/me",
+        headers=auth_headers,
+        json={"telegram_user_id": 42424242},
+    )
+    assert r.status_code == 200
+    assert r.json()["telegram_user_id"] == 42424242
 
 
 # --- tasks ---

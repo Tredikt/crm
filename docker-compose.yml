@@ -21,16 +21,6 @@ services:
       timeout: 5s
       retries: 5
 
-  migrate:
-    build: .
-    command: alembic upgrade head
-    environment: &app_db
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lidocrm}:${POSTGRES_PASSWORD:-lidocrm}@postgres:5432/${POSTGRES_DB:-lidocrm}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   api:
     build: .
     restart: unless-stopped
@@ -39,29 +29,29 @@ services:
       --no-access-log
     ports:
       - "127.0.0.1:8000:8000"
-    # DATABASE_URL с хоста `localhost` в .env — для контейнера неверен: после <<: идут явные ключи
+    # DATABASE_URL с хоста `localhost` в .env — для контейнера неверен; здесь явный URL к postgres
     environment:
-      <<: *app_db
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lidocrm}:${POSTGRES_PASSWORD:-lidocrm}@postgres:5432/${POSTGRES_DB:-lidocrm}
       DEV: ${DEV:-false}
     env_file:
       - .env
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
 
   bot:
     build: .
     command: python -m app.bot.main
     environment:
-      <<: *app_db
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lidocrm}:${POSTGRES_PASSWORD:-lidocrm}@postgres:5432/${POSTGRES_DB:-lidocrm}
       DEV: ${DEV:-false}
     env_file:
       - .env
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
     restart: unless-stopped
 
   # Прод-UI: собранный SPA + nginx (не SSR; см. frontend/Dockerfile). Браузер: http://localhost:${WEB_PORT:-8080}
